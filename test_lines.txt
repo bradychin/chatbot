@@ -1,0 +1,6 @@
+L1045 +++$+++ u0 +++$+++ m0 +++$+++ BIANCA +++$+++ Who's your favorite driver?
+L1044 +++$+++ u2 +++$+++ m0 +++$+++ CAMERON +++$+++ Lewis Hamilton. Who is yours?
+L985 +++$+++ u0 +++$+++ m0 +++$+++ BIANCA +++$+++ Lando Norris.
+L984 +++$+++ u2 +++$+++ m0 +++$+++ CAMERON +++$+++ Nice!
+L925 +++$+++ u0 +++$+++ m0 +++$+++ BIANCA +++$+++ Ferrari won!
+L924 +++$+++ u2 +++$+++ m0 +++$+++ CAMERON +++$+++ WOO HOO!

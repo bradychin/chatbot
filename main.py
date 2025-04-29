@@ -1,9 +1,10 @@
-#--------- 1. Import libraries ---------#
+#--------- Import libraries ---------#
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, get_linear_schedule_with_warmup
 import torch
 import logging
+from torch.cuda.amp import autocast, GradScaler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -65,7 +66,9 @@ class ProcessData:
     def load_conversations(self):
         conversations = []
         with open(self.movie_conversations_path, 'r', encoding='iso-8859-1') as file:
-            for line in file:
+            for i, line in enumerate(file):
+                if i >= 400:
+                    break
                 parts = line.strip().split(' +++$+++ ')
                 line_ids = eval(parts[-1])
                 conversations.append(line_ids)
@@ -91,8 +94,10 @@ class Chatbot:
         self.tokenizer = self.data_processor.tokenizer
         self.model = GPT2LMHeadModel.from_pretrained('gpt2')
         self.model.resize_token_embeddings(len(self.tokenizer))
+        self.model.config.pad_token_id = self.tokenizer.pad_token_id
 
     def fine_tune(self):
+        epochs = 3
         dataset = self.data_processor.get_dataset()
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
@@ -100,37 +105,80 @@ class Chatbot:
         logger.info(f'Using device: {device}')
 
         self.model.to(device)
-        optimizer = AdamW(self.model.parameters(), lr=5e-6)
+        optimizer = AdamW(self.model.parameters(), lr=5e-5)
+        training_steps = len(dataloader) * epochs
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=int(0.1*training_steps),
+            num_training_steps=training_steps
+        )
+
+        scaler = GradScaler() if device.type == 'cuda' else None
+        accumulation = 4
 
         # Fine tune
         self.model.train()
-        epochs = 3
+        optimizer.zero_grad()
+        total_loss = 0
         for epoch in range(epochs):
             for batch_index, batch in enumerate(dataloader):
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
                 labels = batch['labels'].to(device)
+
                 if input_ids.size(0) == 0:
                     print('Empty batch. Skipping')
                     continue
-                outputs = self.model(input_ids = input_ids,
-                                     attention_mask = attention_mask,
-                                     labels = labels)
-                loss = outputs.loss
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                print(f'Epoch: {epoch}. Loss: {loss.item()}')
 
-        # self.model.save_pretrained("fine_tuned_chatbot")
-        # self.data_processor.tokenizer.save_pretrained("fine_tuned_chatbot")
+                if device.type == 'cuda':
+                    with autocast():
+                        outputs = self.model(input_ids=input_ids,
+                                             attention_mask=attention_mask,
+                                             labels=labels)
+                        loss = outputs.loss / accumulation
+                    scaler.scale(loss).backward()
+                    if (batch_index + 1) % accumulation == 0:
+                        scaler.step(optimizer)
+                        scaler.update()
+                        optimizer.zero_grad()
+                else:
+                    outputs = self.model(input_ids=input_ids,
+                                         attention_mask=attention_mask,
+                                         labels=labels)
+                    loss = outputs.loss / accumulation
+                    loss.backward()
+                    if (batch_index + 1) % accumulation == 0:
+                        optimizer.step()
+                        scheduler.step()
+                        optimizer.zero_grad()
+
+                total_loss += loss.item() * accumulation
+
+                if batch_index % 10 == 0:
+                    logger.info(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * accumulation}')
+
+            if (batch_index + 1) % accumulation != 0:
+                if device.type == 'cuda':
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
+
+            avg_loss = total_loss / len(dataloader)
+            print(f'Epoch: {epoch} Completed. Average Loss: {avg_loss}')
+
+        self.model.save_pretrained("fine_tuned_chatbot")
+        self.data_processor.tokenizer.save_pretrained("fine_tuned_chatbot")
+        print('Saved model')
 
 #--------- Main Function ---------#
 def main():
-    movie_lines_path = 'test_lines.txt'
-    # movie_lines_path = 'cornell movie-dialogs corpus/movie_lines.txt'
-    movie_conversations_path = 'test_conversations.txt'
-    # movie_conversations_path = 'cornell movie-dialogs corpus/movie_conversations.txt'
+    # movie_lines_path = 'test_lines.txt'
+    movie_lines_path = 'cornell movie-dialogs corpus/movie_lines.txt'
+    # movie_conversations_path = 'test_conversations.txt'
+    movie_conversations_path = 'cornell movie-dialogs corpus/movie_conversations.txt'
 
     chatbot = Chatbot(movie_lines_path, movie_conversations_path)
     chatbot.fine_tune()

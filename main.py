@@ -22,7 +22,7 @@ class DialogManagement(Dataset):
     def __getitem__(self, idx):
         prompt, response = self.dialog_pairs[idx]
         # Format: <BOS> prompt <EOS> response <EOS>
-        combined_text = f"{self.tokenizer.bos_token} Human: {prompt} {self.tokenizer.eos_token} Assistant: {response} {self.tokenizer.eos_token}"
+        combined_text = f"{self.tokenizer.bos_token} Human: {prompt} {self.tokenizer.eos_token}{response} {self.tokenizer.eos_token}"
 
         encodings = self.tokenizer(combined_text,
                                    truncation=True,
@@ -166,7 +166,7 @@ class Chatbot:
 
                 total_loss += loss.item() * accumulation
 
-                if batch_index % 10 == 0:
+                if batch_index % 50 == 0:
                     logger.info(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * accumulation}')
 
             if (batch_index + 1) % accumulation != 0:
@@ -184,19 +184,17 @@ class Chatbot:
             avg_loss = total_loss / len(dataloader)
             print(f'Epoch: {epoch} Completed. Average Loss: {avg_loss}')
 
-            self.model.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
-            self.tokenizer.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
-            print('Saved checkpoint model.')
+            # self.model.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
+            # self.tokenizer.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
+            # print('Saved checkpoint model.')
 
-        self.model.save_pretrained("fine_tuned_chatbot")
-        self.tokenizer.save_pretrained("fine_tuned_chatbot")
+        self.model.save_pretrained('chatbot_model')
+        self.tokenizer.save_pretrained("chatbot_model")
         print('Saved final model')
 
 #--------- Main Function ---------#
 def main():
-    # movie_lines_path = 'test_lines.txt'
     movie_lines_path = 'cornell movie-dialogs corpus/movie_lines.txt'
-    # movie_conversations_path = 'test_conversations.txt'
     movie_conversations_path = 'cornell movie-dialogs corpus/movie_conversations.txt'
 
     chatbot = Chatbot(movie_lines_path, movie_conversations_path)

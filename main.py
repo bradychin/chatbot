@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 #--------- Tokenize ---------#
 class DialogManagement(Dataset):
-    def __init__(self, dialog_pairs, tokenizer, max_length=512):
+    def __init__(self, dialog_pairs, tokenizer, max_length=128):
         self.dialog_pairs = dialog_pairs
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -22,7 +22,7 @@ class DialogManagement(Dataset):
     def __getitem__(self, idx):
         prompt, response = self.dialog_pairs[idx]
         # Format: <BOS> prompt <EOS> response <EOS>
-        combined_text = f"{self.tokenizer.bos_token} {prompt} {self.tokenizer.eos_token} {response} {self.tokenizer.eos_token}"
+        combined_text = f"{self.tokenizer.bos_token} Human: {prompt} {self.tokenizer.eos_token} Assistant: {response} {self.tokenizer.eos_token}"
 
         encodings = self.tokenizer(combined_text,
                                    truncation=True,
@@ -58,8 +58,11 @@ class ProcessData:
         with open(self.movie_lines_path, 'r', encoding='iso-8859-1') as file:
             for line in file:
                 parts = line.strip().split(' +++$+++ ')
-                line_id, text = parts[0], parts[-1]
-                lines[line_id] = text
+                if len(parts) >= 5:
+                    line_id, text = parts[0], parts[4]
+                    text = text.strip()
+                    if text:
+                        lines[line_id] = text
         return lines
 
     # Import conversations
@@ -70,8 +73,10 @@ class ProcessData:
                 if i >= 400:
                     break
                 parts = line.strip().split(' +++$+++ ')
-                line_ids = eval(parts[-1])
-                conversations.append(line_ids)
+                if len(parts) >= 4:
+                    line_ids = eval(parts[3])
+                    if len(line_ids) >= 2:
+                        conversations.append(line_ids)
         return conversations
 
     # Create dialog
@@ -79,9 +84,11 @@ class ProcessData:
         dialog = []
         for conversation in self.conversations:
             for i in range(len(conversation)-1):
-                prompt = self.lines[conversation[i]]
-                response = self.lines[conversation[i+1]]
-                dialog.append((prompt, response))
+                if conversation[i] in self.lines and conversation[i+1] in self.lines:
+                    prompt = self.lines[conversation[i]]
+                    response = self.lines[conversation[i+1]]
+                    if 3 <= len(prompt.split()) <= 50 and 3 <= len(response.split()) <= 50:
+                        dialog.append((prompt, response))
         return dialog
 
     def get_dataset(self):
@@ -97,15 +104,16 @@ class Chatbot:
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
 
     def fine_tune(self):
-        epochs = 3
+        epochs = 5
+        batch_size = 3
         dataset = self.data_processor.get_dataset()
-        dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f'Using device: {device}')
 
         self.model.to(device)
-        optimizer = AdamW(self.model.parameters(), lr=5e-5)
+        optimizer = AdamW(self.model.parameters(), lr=3e-5)
         training_steps = len(dataloader) * epochs
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
@@ -114,7 +122,7 @@ class Chatbot:
         )
 
         scaler = GradScaler() if device.type == 'cuda' else None
-        accumulation = 4
+        accumulation = 2
 
         # Fine tune
         self.model.train()
@@ -138,8 +146,11 @@ class Chatbot:
                         loss = outputs.loss / accumulation
                     scaler.scale(loss).backward()
                     if (batch_index + 1) % accumulation == 0:
+                        scaler.unscale(optimizer)
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                         scaler.step(optimizer)
                         scaler.update()
+                        scheduler.step()
                         optimizer.zero_grad()
                 else:
                     outputs = self.model(input_ids=input_ids,
@@ -148,6 +159,7 @@ class Chatbot:
                     loss = outputs.loss / accumulation
                     loss.backward()
                     if (batch_index + 1) % accumulation == 0:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                         optimizer.step()
                         scheduler.step()
                         optimizer.zero_grad()
@@ -159,9 +171,12 @@ class Chatbot:
 
             if (batch_index + 1) % accumulation != 0:
                 if device.type == 'cuda':
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                     scaler.step(optimizer)
                     scaler.update()
                 else:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                     optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
@@ -169,9 +184,13 @@ class Chatbot:
             avg_loss = total_loss / len(dataloader)
             print(f'Epoch: {epoch} Completed. Average Loss: {avg_loss}')
 
+            self.model.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
+            self.tokenizer.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
+            print('Saved checkpoint model.')
+
         self.model.save_pretrained("fine_tuned_chatbot")
-        self.data_processor.tokenizer.save_pretrained("fine_tuned_chatbot")
-        print('Saved model')
+        self.tokenizer.save_pretrained("fine_tuned_chatbot")
+        print('Saved final model')
 
 #--------- Main Function ---------#
 def main():

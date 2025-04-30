@@ -1,6 +1,7 @@
 #--------- Import libraries ---------#
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import torch
+import sys
 
 #--------- Chatbot ---------#
 def chatbot(prompt, model, tokenizer, device):
@@ -27,7 +28,7 @@ def chatbot(prompt, model, tokenizer, device):
     if prompt == 'stop':
         response_text = 'Have a good day!'
 
-    print(f'Chatbot: {response_text}\n')
+    print(f'Chatbot: {response_text.strip()}\n')
 
     return encoded_prompt, prompt
 
@@ -49,9 +50,19 @@ def debug(model, tokenizer, encoded_prompt):
         print(
             f"  {token_id.item()}: {token} (probability: {torch.softmax(last_token_logits, dim=0)[token_id.item()]:.4f})")
 
-def main():
-    model = GPT2LMHeadModel.from_pretrained('chatbot_model')
-    tokenizer = GPT2Tokenizer.from_pretrained('chatbot_model')
+def load_model(saved_model):
+    try:
+        model = GPT2LMHeadModel.from_pretrained(saved_model)
+        print('Model load success.')
+    except OSError:
+        print('Model load was not successful.')
+        sys.exit(1)
+    try:
+        tokenizer = GPT2Tokenizer.from_pretrained(saved_model)
+        print('Tokenizer load success.')
+    except OSError:
+        print('Tokenizer load was not successful.')
+        sys.exit(1)
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -61,16 +72,21 @@ def main():
     model.to(device)
     model.eval()
 
-    print('\nYou can talk with this chatbot. If you want to stop the conversation you can type "stop".\n')
+    return model, tokenizer, device
+
+def main():
+    saved_model = 'chatbot_model'
+    model, tokenizer, device = load_model(saved_model)
+
+    print('\nIf you want to stop the conversation you can type "stop".\n')
     while True:
         prompt = input('>>> ')
         chatbot(prompt, model, tokenizer, device)
+        # Uncomment for debugging
+        # debug(model, tokenizer, chatbot(model, tokenizer, device))
 
         if prompt == 'stop':
             break
-
-    # Uncomment for debugging
-    # debug(model, tokenizer, chatbot(model, tokenizer, device))
 
 if __name__ == '__main__':
     main()

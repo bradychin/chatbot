@@ -1,4 +1,5 @@
 #--------- Import libraries ---------#
+import sys
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, get_linear_schedule_with_warmup
@@ -22,7 +23,7 @@ class DialogManagement(Dataset):
     def __getitem__(self, idx):
         prompt, response = self.dialog_pairs[idx]
         # Format: <BOS> prompt <EOS> response <EOS>
-        combined_text = f"{self.tokenizer.bos_token} Human: {prompt} {self.tokenizer.eos_token}{response} {self.tokenizer.eos_token}"
+        combined_text = f"{self.tokenizer.bos_token} {prompt} {self.tokenizer.eos_token} {response} {self.tokenizer.eos_token}"
 
         encodings = self.tokenizer(combined_text,
                                    truncation=True,
@@ -48,8 +49,16 @@ class ProcessData:
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         special_tokens = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}
         self.tokenizer.add_special_tokens(special_tokens)
-        self.lines = self.load_lines()
-        self.conversations = self.load_conversations()
+        try:
+            self.lines = self.load_lines()
+        except FileNotFoundError:
+            print('File "movie_lines.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_lines.txt')
+            sys.exit(1)
+        try:
+            self.conversations = self.load_conversations()
+        except FileNotFoundError:
+            print('File "movie_conversations.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_conversations.txt')
+            sys.exit(1)
         self.dialog = self.create_dialog()
 
     # Import lines

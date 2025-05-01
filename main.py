@@ -1,11 +1,12 @@
 #--------- Import libraries ---------#
 import sys
 from torch.optim import AdamW
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, random_split
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, get_linear_schedule_with_warmup
 import torch
 import logging
 from torch.cuda.amp import autocast, GradScaler
+import re
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,23 +44,37 @@ class DialogManagement(Dataset):
 
 #--------- Process Data ---------#
 class ProcessData:
-    def __init__(self, movie_lines_path, movie_conversations_path):
+    def __init__(self, movie_lines_path, movie_conversations_path, train_val_split=0.1):
         self.movie_lines_path = movie_lines_path
         self.movie_conversations_path = movie_conversations_path
+        self.train_val_split = train_val_split
+
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         special_tokens = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}
         self.tokenizer.add_special_tokens(special_tokens)
         try:
             self.lines = self.load_lines()
+            logger.info(f'Loaded {len(self.lines)} lines.')
         except FileNotFoundError:
-            print('File "movie_lines.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_lines.txt')
+            logger.error('File "movie_lines.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_lines.txt')
             sys.exit(1)
         try:
             self.conversations = self.load_conversations()
+            logger.info(f'Loaded {len(self.conversations)} conversations.')
         except FileNotFoundError:
-            print('File "movie_conversations.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_conversations.txt')
+            logger.error('File "movie_conversations.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_conversations.txt')
             sys.exit(1)
         self.dialog = self.create_dialog()
+        logger.info(f'Created {len(self.dialog)} dialog pairs.')
+        self.train_dataset, self.val_dataset = self.create_datasets()
+
+    def preprocess_lines(self, text):
+        text = text.lower()
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r'[^\w\s.,?!\'"-]', '', text)
+        text = re.sub(r'[""]', '"', text)
+        text = re.sub(r"['']", "'", text)
+        return text
 
     # Import lines
     def load_lines(self):
@@ -69,7 +84,7 @@ class ProcessData:
                 parts = line.strip().split(' +++$+++ ')
                 if len(parts) >= 5:
                     line_id, text = parts[0], parts[4]
-                    text = text.strip()
+                    text = self.preprocess_lines(text.strip())
                     if text:
                         lines[line_id] = text
         return lines
@@ -79,8 +94,12 @@ class ProcessData:
         conversations = []
         with open(self.movie_conversations_path, 'r', encoding='iso-8859-1') as file:
             for i, line in enumerate(file):
-                if i >= 400:
+
+                # Uncomment to use a subset of dataset for testing
+                number_of_lines = 400
+                if i >= number_of_lines:
                     break
+
                 parts = line.strip().split(' +++$+++ ')
                 if len(parts) >= 4:
                     line_ids = eval(parts[3])
@@ -100,8 +119,27 @@ class ProcessData:
                         dialog.append((prompt, response))
         return dialog
 
-    def get_dataset(self):
-        return DialogManagement(self.dialog, self.tokenizer)
+    def create_datasets(self):
+        full_dataset = DialogManagement(self.dialog, self.tokenizer)
+        validation_size = int(len(full_dataset) * self.train_val_split)
+        train_size = len(full_dataset) - validation_size
+        train_dataset, validation_dataset = random_split(full_dataset, [train_size, validation_size])
+        logger.info(f'Training dataset: {train_size} dialog pairs.')
+        logger.info(f'Validation dataset: {validation_size} dialog pairs.\n')
+        return train_dataset, validation_dataset
+
+    def get_dataloaders(self, batch_size=4):
+        train_loader = DataLoader(self.train_dataset,
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=2,
+                                  pin_memory=True)
+        validation_loader = DataLoader(self.val_dataset,
+                                batch_size=batch_size,
+                                shuffle=False,
+                                num_workers=2,
+                                pin_memory=True)
+        return train_loader, validation_loader
 
 #--------- Chatbot ---------#
 class Chatbot:
@@ -113,17 +151,18 @@ class Chatbot:
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
 
     def fine_tune(self):
-        epochs = 5
+        epochs = 1
         batch_size = 3
-        dataset = self.data_processor.get_dataset()
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+        train_loader, validation_loader = self.data_processor.get_dataloaders(batch_size=batch_size)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        logger.info(f'Using device: {device}')
+        logger.info(f'Using device: {device}\n')
 
         self.model.to(device)
         optimizer = AdamW(self.model.parameters(), lr=3e-5)
-        training_steps = len(dataloader) * epochs
+
+        training_steps = len(train_loader) * epochs
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=int(0.1*training_steps),
@@ -133,18 +172,23 @@ class Chatbot:
         scaler = GradScaler() if device.type == 'cuda' else None
         accumulation = 2
 
+        best_validation_loss = float('inf')
+        best_epoch = -1
+
         # Fine tune
-        self.model.train()
-        optimizer.zero_grad()
-        total_loss = 0
         for epoch in range(epochs):
-            for batch_index, batch in enumerate(dataloader):
+            self.model.train()
+            optimizer.zero_grad()
+            total_train_loss = 0
+
+            for batch_index, batch in enumerate(train_loader):
+                # Training stage
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
                 labels = batch['labels'].to(device)
 
                 if input_ids.size(0) == 0:
-                    print('Empty batch. Skipping')
+                    logger.warning('Empty batch. Skipping')
                     continue
 
                 if device.type == 'cuda':
@@ -173,7 +217,7 @@ class Chatbot:
                         scheduler.step()
                         optimizer.zero_grad()
 
-                total_loss += loss.item() * accumulation
+                total_train_loss += loss.item() * accumulation
 
                 if batch_index % 50 == 0:
                     logger.info(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * accumulation}')
@@ -190,16 +234,51 @@ class Chatbot:
                 scheduler.step()
                 optimizer.zero_grad()
 
-            avg_loss = total_loss / len(dataloader)
-            print(f'Epoch: {epoch} Completed. Average Loss: {avg_loss}')
+            average_train_loss = total_train_loss / len(train_loader)
+            logger.info(f'Epoch: {epoch} Completed. Average Loss: {average_train_loss}')
 
-            # self.model.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
-            # self.tokenizer.save_pretrained(f'fine_tuned_chatbot_epoch_{epoch}')
-            # print('Saved checkpoint model.')
+            # Validation stage
+            self.model.eval()
+            total_validation_loss = 0
 
-        self.model.save_pretrained('chatbot_model')
-        self.tokenizer.save_pretrained("chatbot_model")
-        print('Saved final model')
+            with torch.no_grad():
+                for validation_batch in validation_loader:
+                    validation_input_ids = validation_batch['input_ids'].to(device)
+                    validation_attention_mask = validation_batch['attention_mask'].to(device)
+                    validation_labels = validation_batch['labels'].to(device)
+
+                    if validation_input_ids.size(0) == 0:
+                        continue
+
+                    validation_outputs = self.model(input_ids=validation_input_ids,
+                                                    attention_mask=validation_attention_mask,
+                                                    labels=validation_labels)
+
+                    validation_loss = validation_outputs.loss
+                    total_validation_loss += validation_loss.item()
+
+            average_validation_loss = total_validation_loss / len(validation_loader)
+            logger.info(f'Epoch: {epoch} Validation Loss: {average_validation_loss}')
+
+            checkpoint_chatbot_model_name = f'chatbot_model_epoch_{epoch}'
+            self.model.save_pretrained(checkpoint_chatbot_model_name)
+            self.tokenizer.save_pretrained(checkpoint_chatbot_model_name)
+            print(f'Saved checkpoint model epoch {epoch}.')
+
+            if average_validation_loss < best_validation_loss:
+                best_validation_loss = average_validation_loss
+                best_epoch = epoch
+                best_model_path = 'chatbot_model_best'
+                self.model.save_pretrained(best_model_path)
+                self.tokenizer.save_pretrained(best_model_path)
+                print(f'New best model saved with validation loss: {best_validation_loss}')
+
+        chatbot_model_name = 'chatbot_model'
+        self.model.save_pretrained(chatbot_model_name)
+        self.tokenizer.save_pretrained(chatbot_model_name)
+        print(f'\nSaved final model as {chatbot_model_name}.')
+        print(f'Best model from epoch {best_epoch} with validation loss: {best_validation_loss}.')
+
 
 #--------- Main Function ---------#
 def main():

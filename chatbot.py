@@ -2,6 +2,11 @@
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import torch
 import sys
+import logging
+import re
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 #--------- Chatbot ---------#
 def chatbot(prompt, model, tokenizer, device):
@@ -28,7 +33,12 @@ def chatbot(prompt, model, tokenizer, device):
     if prompt == 'stop':
         response_text = 'Have a good day!'
 
-    print(f'Chatbot: {response_text.strip()}\n')
+    response_text = re.sub(r'\s+', ' ', response_text).strip()
+    response_text = re.sub(r'[^\w\s.,?!\'"-]', '', response_text)
+    response_text = re.sub(r'[""]', '"', response_text)
+    response_text = re.sub(r"['']", "'", response_text)
+
+    print(f'Chatbot: {response_text.capitalize()}\n')
 
     return encoded_prompt, prompt
 
@@ -53,15 +63,15 @@ def debug(model, tokenizer, encoded_prompt):
 def load_model(saved_model):
     try:
         model = GPT2LMHeadModel.from_pretrained(saved_model)
-        print('Model load success.')
+        logger.info('Model load success.')
     except OSError:
-        print('Model load was not successful.')
+        logger.error('Model load was not successful.')
         sys.exit(1)
     try:
         tokenizer = GPT2Tokenizer.from_pretrained(saved_model)
-        print('Tokenizer load success.')
+        logger.info('Tokenizer load success.')
     except OSError:
-        print('Tokenizer load was not successful.')
+        logger.error('Tokenizer load was not successful.')
         sys.exit(1)
 
     if tokenizer.pad_token is None:
@@ -75,7 +85,7 @@ def load_model(saved_model):
     return model, tokenizer, device
 
 def main():
-    saved_model = 'chatbot_model'
+    saved_model = 'chatbot_model_best'
     model, tokenizer, device = load_model(saved_model)
 
     print('\nIf you want to stop the conversation you can type "stop".\n')

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 #--------- Tokenize ---------#
 class DialogManagement(Dataset):
-    def __init__(self, dialog_pairs, tokenizer, max_length=256):
+    def __init__(self, dialog_pairs, tokenizer, max_length=128):
         self.dialog_pairs = dialog_pairs
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -35,7 +35,11 @@ class DialogManagement(Dataset):
         input_ids = encodings["input_ids"].squeeze()
         attention_mask = encodings["attention_mask"].squeeze()
 
-        # For GPT training, labels are the same as inputs
+        attention_mask = torch.ones_like(input_ids)
+        attention_mask[input_ids == self.tokenizer.pad_token_id] = 0
+
+        labels = input_ids.clone()
+        labels[attention_mask == 0] = -100
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
@@ -50,8 +54,11 @@ class ProcessData:
         self.train_val_split = train_val_split
 
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        special_tokens = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}
-        self.tokenizer.add_special_tokens(special_tokens)
+        if not self.tokenizer.bos_token:
+            self.tokenizer.add_special_tokens({'bos_token': '<BOS>'})
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
         try:
             self.lines = self.load_lines()
             logger.info(f'Loaded {len(self.lines)} lines.')
@@ -64,6 +71,7 @@ class ProcessData:
         except FileNotFoundError:
             logger.error('File "movie_conversations.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_conversations.txt')
             sys.exit(1)
+
         self.dialog = self.create_dialog()
         logger.info(f'Created {len(self.dialog)} dialog pairs.')
         self.train_dataset, self.val_dataset = self.create_datasets()
@@ -151,18 +159,19 @@ class GenerateModel:
         self.model = GPT2LMHeadModel.from_pretrained('gpt2')
         self.model.resize_token_embeddings(len(self.tokenizer))
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
+        self.model.config.use_cache = False
 
     def fine_tune(self):
-        epochs = 3
-        batch_size = 8
+        epochs = 2
+        batch_size = 3
 
         train_loader, validation_loader = self.data_processor.get_dataloaders(batch_size=batch_size)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        logger.info(f'Using device: {device}\n')
+        logger.info(f'  Using device: {device}\n')
 
         self.model.to(device)
-        optimizer = AdamW(self.model.parameters(), lr=2e-5)
+        optimizer = AdamW(self.model.parameters(), lr=3e-5)
 
         training_steps = len(train_loader) * epochs
         scheduler = get_linear_schedule_with_warmup(
@@ -221,8 +230,10 @@ class GenerateModel:
 
                 total_train_loss += loss.item() * accumulation
 
+                # Logger
+                # Save model
                 if batch_index % 10 == 0:
-                    logger.info(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * accumulation}')
+                    print(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * accumulation}')
                     if batch_index % 100 == 0:
                         checkpoint_chatbot_model_path = f'Models/Testing/chatbot_model_epoch_{epoch}'
                         self.model.save_pretrained(checkpoint_chatbot_model_path)
@@ -243,7 +254,8 @@ class GenerateModel:
                 optimizer.zero_grad()
 
             average_train_loss = total_train_loss / len(train_loader)
-            logger.info(f'Epoch: {epoch} Completed. Average Loss: {average_train_loss}')
+            # Logger
+            logger.info(f'  Epoch: {epoch} Completed. Average Loss: {average_train_loss}')
 
             # Validation stage
             self.model.eval()
@@ -266,8 +278,10 @@ class GenerateModel:
                     total_validation_loss += validation_loss.item()
 
             average_validation_loss = total_validation_loss / len(validation_loader)
-            logger.info(f'Epoch: {epoch} Validation Loss: {average_validation_loss}')
+            # Logger
+            logger.info(f'  Epoch: {epoch} Validation Loss: {average_validation_loss}')
 
+            # Save model
             if average_validation_loss < best_validation_loss:
                 best_validation_loss = average_validation_loss
                 best_epoch = epoch
@@ -276,6 +290,7 @@ class GenerateModel:
                 self.tokenizer.save_pretrained(best_model_path)
                 print(f'New best model saved with validation loss: {best_validation_loss}')
 
+        # Save model
         chatbot_model_path = f'Models/chatbot_model_val_loss_{validation_loss:.2f}'
         self.model.save_pretrained(chatbot_model_path)
         self.tokenizer.save_pretrained(chatbot_model_path)

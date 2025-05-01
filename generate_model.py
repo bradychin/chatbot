@@ -44,7 +44,7 @@ class DialogManagement(Dataset):
 
 #--------- Process Data ---------#
 class ProcessData:
-    def __init__(self, movie_lines_path, movie_conversations_path, train_val_split=0.1):
+    def __init__(self, movie_lines_path, movie_conversations_path, train_val_split=0.2):
         self.movie_lines_path = movie_lines_path
         self.movie_conversations_path = movie_conversations_path
         self.train_val_split = train_val_split
@@ -68,13 +68,13 @@ class ProcessData:
         logger.info(f'Created {len(self.dialog)} dialog pairs.')
         self.train_dataset, self.val_dataset = self.create_datasets()
 
-    def preprocess_lines(self, text):
-        text = text.lower()
-        text = re.sub(r'\s+', ' ', text).strip()
-        text = re.sub(r'[^\w\s.,?!\'"-]', '', text)
-        text = re.sub(r'[""]', '"', text)
-        text = re.sub(r"['']", "'", text)
-        return text
+    def preprocess_lines(self, lines):
+        lines = lines.lower()
+        lines = re.sub(r'\s+', ' ', lines).strip()
+        lines = re.sub(r'[^\w\s.,?!\'"-]', '', lines)
+        lines = re.sub(r'[""]', '"', lines)
+        lines = re.sub(r"['']", "'", lines)
+        return lines
 
     # Import lines
     def load_lines(self):
@@ -119,6 +119,7 @@ class ProcessData:
                         dialog.append((prompt, response))
         return dialog
 
+    # Create datasets
     def create_datasets(self):
         full_dataset = DialogManagement(self.dialog, self.tokenizer)
         validation_size = int(len(full_dataset) * self.train_val_split)
@@ -128,6 +129,7 @@ class ProcessData:
         logger.info(f'Validation dataset: {validation_size} dialog pairs.\n')
         return train_dataset, validation_dataset
 
+    # Load train and validation data
     def get_dataloaders(self, batch_size=4):
         train_loader = DataLoader(self.train_dataset,
                                   batch_size=batch_size,
@@ -141,8 +143,8 @@ class ProcessData:
                                 pin_memory=True)
         return train_loader, validation_loader
 
-#--------- Chatbot ---------#
-class Chatbot:
+#--------- Model ---------#
+class GenerateModel:
     def __init__(self, movie_lines_path, movie_conversations_path):
         self.data_processor = ProcessData(movie_lines_path, movie_conversations_path)
         self.tokenizer = self.data_processor.tokenizer
@@ -285,8 +287,8 @@ def main():
     movie_lines_path = 'cornell movie-dialogs corpus/movie_lines.txt'
     movie_conversations_path = 'cornell movie-dialogs corpus/movie_conversations.txt'
 
-    chatbot = Chatbot(movie_lines_path, movie_conversations_path)
-    chatbot.fine_tune()
+    model = GenerateModel(movie_lines_path, movie_conversations_path)
+    model.fine_tune()
 
 if __name__ == '__main__':
     main()

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 #--------- Tokenize ---------#
 class DialogManagement(Dataset):
-    def __init__(self, dialog_pairs, tokenizer, max_length=128):
+    def __init__(self, dialog_pairs, tokenizer, max_length=256):
         self.dialog_pairs = dialog_pairs
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -153,8 +153,8 @@ class GenerateModel:
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
 
     def fine_tune(self):
-        epochs = 1
-        batch_size = 3
+        epochs = 3
+        batch_size = 8
 
         train_loader, validation_loader = self.data_processor.get_dataloaders(batch_size=batch_size)
 
@@ -162,7 +162,7 @@ class GenerateModel:
         logger.info(f'Using device: {device}\n')
 
         self.model.to(device)
-        optimizer = AdamW(self.model.parameters(), lr=3e-5)
+        optimizer = AdamW(self.model.parameters(), lr=2e-5)
 
         training_steps = len(train_loader) * epochs
         scheduler = get_linear_schedule_with_warmup(
@@ -221,8 +221,14 @@ class GenerateModel:
 
                 total_train_loss += loss.item() * accumulation
 
-                if batch_index % 50 == 0:
+                if batch_index % 10 == 0:
                     logger.info(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * accumulation}')
+                    if batch_index % 100 == 0:
+                        checkpoint_chatbot_model_path = f'Models/Testing/chatbot_model_epoch_{epoch}'
+                        self.model.save_pretrained(checkpoint_chatbot_model_path)
+                        self.tokenizer.save_pretrained(checkpoint_chatbot_model_path)
+                        print(f'Saved {checkpoint_chatbot_model_path}.')
+
 
             if (batch_index + 1) % accumulation != 0:
                 if device.type == 'cuda':
@@ -270,7 +276,7 @@ class GenerateModel:
                 self.tokenizer.save_pretrained(best_model_path)
                 print(f'New best model saved with validation loss: {best_validation_loss}')
 
-        chatbot_model_path = 'Models/chatbot_model'
+        chatbot_model_path = f'Models/chatbot_model_val_loss_{validation_loss:.2f}'
         self.model.save_pretrained(chatbot_model_path)
         self.tokenizer.save_pretrained(chatbot_model_path)
         print('\nSaved:')

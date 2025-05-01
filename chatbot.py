@@ -41,15 +41,18 @@ class ResponseGenerator:
         formatted_prompt = f'{self.tokenizer.bos_token} {prompt} {self.tokenizer.eos_token}'
         encoded_prompt = self.tokenizer.encode(formatted_prompt, return_tensors='pt').to(self.device)
 
+        attention_mask = (encoded_prompt != self.tokenizer.pad_token_id).long()
+
         output_sequences = self.model.generate(input_ids=encoded_prompt,
-                                          max_length=100,
-                                          temperature=0.8,
-                                          top_k=40,
-                                          top_p=0.9,
-                                          do_sample=True,
-                                          num_return_sequences=1,
-                                          pad_token_id=self.tokenizer.pad_token_id,
-                                          eos_token_id=self.tokenizer.eos_token_id)
+                                               attention_mask=attention_mask,
+                                               max_length=100,
+                                               temperature=0.8,
+                                               top_k=40,
+                                               top_p=0.9,
+                                               do_sample=True,
+                                               num_return_sequences=1,
+                                               pad_token_id=self.tokenizer.pad_token_id,
+                                               eos_token_id=self.tokenizer.eos_token_id)
 
         complete_response = self.tokenizer.decode(output_sequences[0], skip_special_tokens=False)
         input_text = self.tokenizer.decode(encoded_prompt[0], skip_special_tokens=False)
@@ -74,7 +77,7 @@ class Chatbot:
 
 #--------- Main ---------#
 def main():
-    saved_model = 'Models/chatbot_model'
+    saved_model = 'Models/model_rev2'
     response_generator = ResponseGenerator(saved_model)
 
     print('\nIf you want to stop the conversation you can type "stop".\n')

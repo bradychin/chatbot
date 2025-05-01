@@ -262,24 +262,22 @@ class GenerateModel:
             average_validation_loss = total_validation_loss / len(validation_loader)
             logger.info(f'Epoch: {epoch} Validation Loss: {average_validation_loss}')
 
-            checkpoint_chatbot_model_name = f'chatbot_model_epoch_{epoch}'
-            self.model.save_pretrained(checkpoint_chatbot_model_name)
-            self.tokenizer.save_pretrained(checkpoint_chatbot_model_name)
-            print(f'Saved checkpoint model epoch {epoch}.')
-
             if average_validation_loss < best_validation_loss:
                 best_validation_loss = average_validation_loss
                 best_epoch = epoch
-                best_model_path = 'chatbot_model_best'
+                best_model_path = 'Models/chatbot_model_best'
                 self.model.save_pretrained(best_model_path)
                 self.tokenizer.save_pretrained(best_model_path)
                 print(f'New best model saved with validation loss: {best_validation_loss}')
 
-        chatbot_model_name = 'chatbot_model'
-        self.model.save_pretrained(chatbot_model_name)
-        self.tokenizer.save_pretrained(chatbot_model_name)
-        print(f'\nSaved final model as {chatbot_model_name}.')
-        print(f'Best model from epoch {best_epoch} with validation loss: {best_validation_loss}.')
+        chatbot_model_path = 'Models/chatbot_model'
+        self.model.save_pretrained(chatbot_model_path)
+        self.tokenizer.save_pretrained(chatbot_model_path)
+        print('\nSaved:')
+        print(f'Final model: {chatbot_model_path}.')
+        print(f'Best model: {best_model_path}.')
+        print(f'    > Epoch: {best_epoch}')
+        print(f'    > Validation Loss: {best_validation_loss}.')
 
 
 #--------- Main Function ---------#

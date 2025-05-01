@@ -74,7 +74,7 @@ class Chatbot:
 
 #--------- Main ---------#
 def main():
-    saved_model = 'chatbot_model_rev2'
+    saved_model = 'Models/chatbot_model_rev2'
     response_generator = ResponseGenerator(saved_model)
 
     print('\nIf you want to stop the conversation you can type "stop".\n')

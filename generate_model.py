@@ -96,7 +96,7 @@ class ProcessData:
             for i, line in enumerate(file):
 
                 # Uncomment to use a subset of dataset for testing
-                number_of_lines = 4000
+                number_of_lines = 6000
                 if i >= number_of_lines:
                     break
 
@@ -155,6 +155,8 @@ class GenerateModel:
     def fine_tune(self):
         epochs = 4
         batch_size = 8
+        patience = 2
+        epochs_without_improvement = 0
 
         train_loader, validation_loader = self.data_processor.get_dataloaders(batch_size=batch_size)
 
@@ -269,10 +271,16 @@ class GenerateModel:
             if average_validation_loss < best_validation_loss:
                 best_validation_loss = average_validation_loss
                 best_epoch = epoch
-                best_model_path = f'models/model_best_val_loss_{best_validation_loss}'
+                epochs_without_improvement = 0
+                best_model_path = f'models/val loss/model_best_val_loss_{best_validation_loss}'
                 self.model.save_pretrained(best_model_path)
                 self.tokenizer.save_pretrained(best_model_path)
                 print(f'New best model saved with validation loss: {best_validation_loss}')
+            else:
+                epochs_without_improvement += 1
+                if epochs_without_improvement >= patience:
+                    logger.info(f'Early stopping at epoch {epoch}. No improvement for {patience} consecutive epochs.')
+                    break
 
         chatbot_model_path = 'models/model'
         self.model.save_pretrained(chatbot_model_path)

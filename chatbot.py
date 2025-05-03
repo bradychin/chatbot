@@ -43,28 +43,36 @@ class ResponseGenerator:
 
         output_sequences = self.model.generate(input_ids=encoded_prompt,
                                                max_new_tokens=100,
-                                               temperature=1.0,
+                                               temperature=0.8,
                                                top_k=50,
-                                               top_p=0.92,
+                                               top_p=0.95,
                                                do_sample=True,
                                                num_return_sequences=1,
                                                pad_token_id=self.tokenizer.pad_token_id,
                                                eos_token_id=self.tokenizer.eos_token_id,
                                                no_repeat_ngram_size=3)
 
-        complete_response = self.tokenizer.decode(output_sequences[0], skip_special_tokens=False)
-        input_text = self.tokenizer.decode(encoded_prompt[0], skip_special_tokens=False)
+        complete_response = self.tokenizer.decode(output_sequences[0], skip_special_tokens=True)
+        input_text = self.tokenizer.decode(encoded_prompt[0], skip_special_tokens=True)
         response_text = complete_response[len(input_text):]
 
         if self.tokenizer.eos_token in response_text:
             response_text = response_text[:response_text.find(self.tokenizer.eos_token)]
 
-        response_text = re.sub(r'\s+', ' ', response_text).strip()
-        response_text = re.sub(r'[^\w\s.,?!\'"-]', '', response_text)
-        response_text = re.sub(r'[""]', '"', response_text)
-        response_text = re.sub(r"['']", "'", response_text)
+        response_text = self.clean_response(response_text)
+
+        if not response_text.strip():
+            response_text = 'Blank response'
 
         return response_text.capitalize()
+
+    def clean_response(self, response):
+        response = re.sub(r'\s+', ' ', response).strip()
+        response = re.sub(r'[^\w\s.,?!\'"-]', '', response)
+        response = re.sub(r'[""]', '"', response)
+        response = re.sub(r"['']", "'", response)
+        return response
+
 
 # --------- Chatbot ---------#
 class Chatbot:
@@ -72,6 +80,7 @@ class Chatbot:
         self.response_generator = response_generator
         self.max_history = max_history
         self.conversation_history = []
+        self.session_context = 'You are a helpful chatbot.'
 
     def add_to_history(self, role, message):
         """Add a message to the conversation history."""
@@ -82,10 +91,11 @@ class Chatbot:
 
     def format_conversation_for_prompt(self):
         """Format the conversation history into a prompt for the model."""
-        formatted_history = ""
+        formatted_history = f'{self.session_context}\n\n'
         for entry in self.conversation_history:
             prefix = "User: " if entry["role"] == "user" else "Bot: "
-            formatted_history += f"{prefix}{entry['content']}\n"
+            formatted_history += f"{prefix} {entry['content']}\n"
+
         return formatted_history.strip()
 
     def generate_response(self, user_input):
@@ -93,9 +103,12 @@ class Chatbot:
         # Add user message to history
         self.add_to_history("user", user_input)
 
+        if not user_input.strip():
+            return 'I did not receive an input'
+
         # Build prompt with conversation context
         if len(self.conversation_history) <= 2:  # First exchange
-            prompt = f"User: {user_input}\nBot:"
+            prompt = f"{self.session_context}\nUser: {user_input}Bot:"
         else:
             # Create a context window from recent conversation
             # Format the conversation in a way that helps the model better understand the flow
@@ -106,8 +119,8 @@ class Chatbot:
         response = self.response_generator.generate(prompt)
 
         # Clean up the response if it starts with "Bot:" (which can happen)
-        if response.lower().startswith("bot:"):
-            response = response[4:].strip()
+        if len(response.split()) < 3 or not any(char.isalpha() for char in response):
+            response = 'I cannot formulate a good response'
 
         # Add bot response to history
         self.add_to_history("bot", response)
@@ -116,7 +129,7 @@ class Chatbot:
 
 # --------- Main ---------#
 def main():
-    saved_model = 'Models/model'
+    saved_model = 'models/model'
     response_generator = ResponseGenerator(saved_model)
     chatbot = Chatbot(response_generator)
 

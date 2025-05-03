@@ -1,7 +1,6 @@
-#--------- Import libraries ---------#
+# --------- Import libraries ---------#
 import sys
-
-from langchain_community.retrievers.kendra import combined_text
+import os
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset, random_split
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, get_linear_schedule_with_warmup
@@ -9,11 +8,15 @@ import torch
 import logging
 from torch.cuda.amp import autocast, GradScaler
 import re
+import numpy as np
+import json
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-#--------- Tokenize ---------#
+
+# --------- Tokenize ---------#
 class DialogManagement(Dataset):
     def __init__(self, dialog_pairs, tokenizer, max_length=256):
         self.dialog_pairs = dialog_pairs
@@ -26,21 +29,25 @@ class DialogManagement(Dataset):
     def __getitem__(self, idx):
         conversation = self.dialog_pairs[idx]
 
+        # Format the entire conversation with multiple turns if available
         if isinstance(conversation, list) and len(conversation) > 1:
-            combined_text = f'{self.tokenizer.bos_token}'
+            # For multi-turn conversations
+            combined_text = f"{self.tokenizer.bos_token} "
 
             for i, (speaker, text) in enumerate(conversation):
-                prefix = 'User: ' if speaker == 'user' else 'Bot: '
-                combined_text += f'{prefix}{text}'
+                prefix = "User: " if speaker == "user" else "Bot: "
+                combined_text += f"{prefix}{text}"
 
+                # Add newline except after the last turn
                 if i < len(conversation) - 1:
-                    combined_text += '\n'
+                    combined_text += "\n"
 
-            combined_text +=f' {self.tokenizer.eos_token}'
-
+            combined_text += f" {self.tokenizer.eos_token}"
         else:
-            prompt, response = conversation if isinstance(conversation, tuple) else (conversation[0][1], conversation[1][1])
-            combined_text = f'{self.tokenizer.bos_token} User: {prompt}\nBot: {response} {self.tokenizer.eos_token}'
+            # For single prompt-response pairs (backward compatibility)
+            prompt, response = conversation if isinstance(conversation, tuple) else (
+            conversation[0][1], conversation[1][1])
+            combined_text = f"{self.tokenizer.bos_token} User: {prompt}\nBot: {response} {self.tokenizer.eos_token}"
 
         encodings = self.tokenizer(combined_text,
                                    truncation=True,
@@ -58,33 +65,45 @@ class DialogManagement(Dataset):
             "labels": input_ids
         }
 
-#--------- Process Data ---------#
+
+# --------- Process Data ---------#
 class ProcessData:
     def __init__(self, movie_lines_path, movie_conversations_path, train_val_split=0.2):
         self.movie_lines_path = movie_lines_path
         self.movie_conversations_path = movie_conversations_path
         self.train_val_split = train_val_split
 
+        # Create directories for model checkpoints if they don't exist
+        os.makedirs('models/checkpoints', exist_ok=True)
+        os.makedirs('models/val loss', exist_ok=True)
+
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         special_tokens = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}
         self.tokenizer.add_special_tokens(special_tokens)
+
         try:
             self.lines = self.load_lines()
             logger.info(f'Loaded {len(self.lines)} lines.')
         except FileNotFoundError:
-            logger.error('File "movie_lines.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_lines.txt')
+            logger.error(
+                'File "movie_lines.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_lines.txt')
             sys.exit(1)
+
         try:
             self.conversations = self.load_conversations()
             logger.info(f'Loaded {len(self.conversations)} conversations.')
         except FileNotFoundError:
-            logger.error('File "movie_conversations.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_conversations.txt')
+            logger.error(
+                'File "movie_conversations.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_conversations.txt')
             sys.exit(1)
+
         self.dialog_data = self.create_dialog()
-        logger.info(f'Created {len(self.dialog_data)} dialog pairs.')
+        logger.info(f'Created {len(self.dialog_data)} dialog items.')
+
         self.train_dataset, self.val_dataset = self.create_datasets()
 
     def preprocess_lines(self, lines):
+        """Clean and normalize text"""
         lines = lines.lower()
         lines = re.sub(r'\s+', ' ', lines).strip()
         lines = re.sub(r'[^\w\s.,?!\'"-]', '', lines)
@@ -102,7 +121,7 @@ class ProcessData:
                     line_id, character_id, text = parts[0], parts[1], parts[4]
                     text = self.preprocess_lines(text.strip())
                     if text:
-                        lines[line_id] = {'text': text, 'character_id': character_id}
+                        lines[line_id] = {"text": text, "character_id": character_id}
         return lines
 
     # Import conversations
@@ -110,9 +129,8 @@ class ProcessData:
         conversations = []
         with open(self.movie_conversations_path, 'r', encoding='iso-8859-1') as file:
             for i, line in enumerate(file):
-
                 # Uncomment to use a subset of dataset for testing
-                number_of_lines = 400
+                number_of_lines = 6000
                 if i >= number_of_lines:
                     break
 
@@ -123,13 +141,15 @@ class ProcessData:
                         conversations.append(line_ids)
         return conversations
 
-    # Create dialog
+    # Create dialog data with context
     def create_dialog(self):
         dialog_data = []
+
         for conversation in self.conversations:
             if len(conversation) < 2:
                 continue
 
+            # For each conversation, create both pair-wise samples and multi-turn samples
             valid_lines = []
 
             for line_id in conversation:
@@ -139,6 +159,7 @@ class ProcessData:
             if len(valid_lines) < 2:
                 continue
 
+            # Create pair-wise samples (traditional approach)
             for i in range(len(valid_lines) - 1):
                 prompt_id = valid_lines[i]
                 response_id = valid_lines[i + 1]
@@ -152,19 +173,25 @@ class ProcessData:
                     # In a real implementation, you might want to track speaker identity
                     dialog_data.append((("user", prompt), ("bot", response)))
 
+            # Create multi-turn samples (for better context understanding)
+            # Take chunks of the conversation with increasing context
+            # For example: turns 1-3, turns 1-4, turns 1-5, etc.
             if len(valid_lines) >= 3:
-                for end_idx in range(2, min(len(valid_lines), 6)):
+                for end_idx in range(2, min(len(valid_lines), 6)):  # Max 5 turns for context
                     context = []
                     for i in range(end_idx + 1):
                         line_id = valid_lines[i]
-                        text = self.lines[line_id]['text']
+                        text = self.lines[line_id]["text"]
 
+                        # Skip if utterance is too long
                         if len(text.split()) > 50:
                             continue
 
-                        role = 'user' if i % 2 == 0 else 'bot'
+                        # Assign roles alternating between user and bot
+                        role = "user" if i % 2 == 0 else "bot"
                         context.append((role, text))
 
+                    # Only add if we have at least 3 turns (to provide actual context)
                     if len(context) >= 3:
                         dialog_data.append(context)
 
@@ -176,8 +203,8 @@ class ProcessData:
         validation_size = int(len(full_dataset) * self.train_val_split)
         train_size = len(full_dataset) - validation_size
         train_dataset, validation_dataset = random_split(full_dataset, [train_size, validation_size])
-        logger.info(f'Training dataset: {train_size} dialog pairs.')
-        logger.info(f'Validation dataset: {validation_size} dialog pairs.\n')
+        logger.info(f'Training dataset: {train_size} dialog items.')
+        logger.info(f'Validation dataset: {validation_size} dialog items.\n')
         return train_dataset, validation_dataset
 
     # Load train and validation data
@@ -188,13 +215,14 @@ class ProcessData:
                                   num_workers=2,
                                   pin_memory=True)
         validation_loader = DataLoader(self.val_dataset,
-                                batch_size=batch_size,
-                                shuffle=False,
-                                num_workers=2,
-                                pin_memory=True)
+                                       batch_size=batch_size,
+                                       shuffle=False,
+                                       num_workers=2,
+                                       pin_memory=True)
         return train_loader, validation_loader
 
-#--------- Model ---------#
+
+# --------- Model ---------#
 class GenerateModel:
     def __init__(self, movie_lines_path, movie_conversations_path):
         self.data_processor = ProcessData(movie_lines_path, movie_conversations_path)
@@ -205,10 +233,10 @@ class GenerateModel:
 
     def fine_tune(self):
         epochs = 4
-        batch_size = 4
-        patience = 1
+        batch_size = 8
+        patience = 2  # Increased patience
         epochs_without_improvement = 0
-        gradient_accumulation = 2
+        gradient_accumulation_steps = 2
 
         train_loader, validation_loader = self.data_processor.get_dataloaders(batch_size=batch_size)
 
@@ -216,12 +244,12 @@ class GenerateModel:
         logger.info(f'Using device: {device}\n')
 
         self.model.to(device)
-        optimizer = AdamW(self.model.parameters(), lr=2e-5, weight_decay=0.01)
+        optimizer = AdamW(self.model.parameters(), lr=2e-5, weight_decay=0.01)  # Added weight decay
 
-        training_steps = len(train_loader) * epochs
+        training_steps = len(train_loader) * epochs // gradient_accumulation_steps
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
-            num_warmup_steps=int(0.1*training_steps),
+            num_warmup_steps=int(0.1 * training_steps),
             num_training_steps=training_steps
         )
 
@@ -230,11 +258,28 @@ class GenerateModel:
         best_validation_loss = float('inf')
         best_epoch = -1
 
+        # Save training config
+        training_config = {
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "patience": patience,
+            "gradient_accumulation_steps": gradient_accumulation_steps,
+            "learning_rate": 2e-5,
+            "weight_decay": 0.01,
+            "warmup": "10% of training steps",
+            "start_time": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        with open('models/training_config.json', 'w') as f:
+            json.dump(training_config, f, indent=4)
+
         # Fine tune
         for epoch in range(epochs):
+            epoch_start_time = time.time()
             self.model.train()
             optimizer.zero_grad()
             total_train_loss = 0
+            steps = 0
 
             for batch_index, batch in enumerate(train_loader):
                 # Training stage
@@ -251,38 +296,47 @@ class GenerateModel:
                         outputs = self.model(input_ids=input_ids,
                                              attention_mask=attention_mask,
                                              labels=labels)
-                        loss = outputs.loss / gradient_accumulation
+                        loss = outputs.loss / gradient_accumulation_steps
                     scaler.scale(loss).backward()
-                    if (batch_index + 1) % gradient_accumulation == 0:
-                        scaler.unscale(optimizer)
+
+                    if (batch_index + 1) % gradient_accumulation_steps == 0:
+                        scaler.unscale_(optimizer)
                         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                         scaler.step(optimizer)
                         scaler.update()
                         scheduler.step()
                         optimizer.zero_grad()
+                        steps += 1
                 else:
                     outputs = self.model(input_ids=input_ids,
                                          attention_mask=attention_mask,
                                          labels=labels)
-                    loss = outputs.loss / gradient_accumulation
+                    loss = outputs.loss / gradient_accumulation_steps
                     loss.backward()
-                    if (batch_index + 1) % gradient_accumulation == 0:
+
+                    if (batch_index + 1) % gradient_accumulation_steps == 0:
                         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                         optimizer.step()
                         scheduler.step()
                         optimizer.zero_grad()
+                        steps += 1
 
-                total_train_loss += loss.item() * gradient_accumulation
+                total_train_loss += loss.item() * gradient_accumulation_steps
 
+                # Log progress
                 if batch_index % 50 == 0:
-                    logger.info(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * gradient_accumulation}')
-                if batch_index % 250 == 0 and batch_index > 0:
-                    checkpoint_chatbot_model_path = f'models/checkpoints/checkpoint_epoch_{epoch}_batch_{batch_index}_lr2e-5'
-                    self.model.save_pretrained(checkpoint_chatbot_model_path)
-                    self.tokenizer.save_pretrained(checkpoint_chatbot_model_path)
-                    print(f'Saved checkpoint model at epoch {epoch} batch {batch_index}')
+                    logger.info(
+                        f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * gradient_accumulation_steps:.4f}')
 
-            if (batch_index + 1) % gradient_accumulation != 0:
+                # Save checkpoint periodically
+                if batch_index % 250 == 0 and batch_index > 0:
+                    checkpoint_path = f'models/checkpoints/checkpoint_epoch_{epoch}_batch_{batch_index}'
+                    self.model.save_pretrained(checkpoint_path)
+                    self.tokenizer.save_pretrained(checkpoint_path)
+                    logger.info(f'Saved checkpoint model at epoch {epoch} batch {batch_index}')
+
+            # Handle remaining gradients if needed
+            if (batch_index + 1) % gradient_accumulation_steps != 0:
                 if device.type == 'cuda':
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
@@ -295,7 +349,8 @@ class GenerateModel:
                 optimizer.zero_grad()
 
             average_train_loss = total_train_loss / len(train_loader)
-            logger.info(f'Epoch: {epoch} Completed. Average Loss: {average_train_loss}')
+            epoch_time = time.time() - epoch_start_time
+            logger.info(f'Epoch: {epoch} completed in {epoch_time:.2f}s. Average Loss: {average_train_loss:.4f}')
 
             # Validation stage
             self.model.eval()
@@ -318,39 +373,52 @@ class GenerateModel:
                     total_validation_loss += validation_loss.item()
 
             average_validation_loss = total_validation_loss / len(validation_loader)
-            logger.info(f'Epoch: {epoch} Validation Loss: {average_validation_loss}')
+            logger.info(f'Epoch: {epoch} Validation Loss: {average_validation_loss:.4f}')
 
-            if average_validation_loss < best_validation_loss - 0.5:
+            # Save model if validation loss improved
+            if average_validation_loss < best_validation_loss - 0.05:  # More lenient improvement threshold
                 best_validation_loss = average_validation_loss
                 best_epoch = epoch
                 epochs_without_improvement = 0
-                best_model_path = f'models/val loss/model_best_val_loss_{best_validation_loss}'
+                best_model_path = f'models/val loss/model_best_val_loss_{best_validation_loss:.4f}'
                 self.model.save_pretrained(best_model_path)
                 self.tokenizer.save_pretrained(best_model_path)
-                print(f'New best model saved with validation loss: {best_validation_loss}')
+                logger.info(f'New best model saved with validation loss: {best_validation_loss:.4f}')
             else:
                 epochs_without_improvement += 1
                 if epochs_without_improvement >= patience:
                     logger.info(f'Early stopping at epoch {epoch}. No improvement for {patience} consecutive epochs.')
                     break
 
+        # Save final model
         chatbot_model_path = 'models/model'
         self.model.save_pretrained(chatbot_model_path)
         self.tokenizer.save_pretrained(chatbot_model_path)
-        print('\nSaved:')
-        print(f'Final model: {chatbot_model_path}.')
-        print(f'Best model: {best_model_path}.')
-        print(f'    > Epoch: {best_epoch}')
-        print(f'    > Validation Loss: {best_validation_loss}.')
+
+        logger.info('\nTraining completed:')
+        logger.info(f'Final model: {chatbot_model_path}')
+        logger.info(f'Best model: best_model_path (Epoch: {best_epoch}, Validation Loss: {best_validation_loss:.4f})')
+
+        # Update training config with results
+        training_config.update({
+            "completed": True,
+            "best_epoch": best_epoch,
+            "best_validation_loss": float(best_validation_loss),
+            "end_time": time.strftime("%Y-%m-%d %H:%M:%S")
+        })
+
+        with open('models/training_config.json', 'w') as f:
+            json.dump(training_config, f, indent=4)
 
 
-#--------- Main Function ---------#
+# --------- Main Function ---------#
 def main():
     movie_lines_path = 'cornell movie-dialogs corpus/movie_lines.txt'
     movie_conversations_path = 'cornell movie-dialogs corpus/movie_conversations.txt'
 
     model = GenerateModel(movie_lines_path, movie_conversations_path)
     model.fine_tune()
+
 
 if __name__ == '__main__':
     main()

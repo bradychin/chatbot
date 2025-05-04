@@ -129,7 +129,7 @@ class Chatbot:
 
 # --------- Main ---------#
 def main():
-    saved_model = 'models/model'
+    saved_model = 'models/checkpoints/checkpoint_epoch_0_batch_2250_lr2e-5'
     response_generator = ResponseGenerator(saved_model)
     chatbot = Chatbot(response_generator)
 

@@ -1,6 +1,5 @@
 #--------- Import libraries ---------#
 import sys
-
 import pandas as pd
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset, random_split
@@ -29,18 +28,18 @@ class DialogManagement(Dataset):
         if isinstance(conversation, list) and len(conversation) > 1:
             combined_text = f'{self.tokenizer.bos_token}'
 
-            for i, (speaker, text) in enumerate(conversation):
-                prefix = 'User: ' if speaker == 'user' else 'Bot: '
-                combined_text += f'{prefix}{text}'
+            for i in range(0, len(conversation) - 1, 2):
+                if i + 1 < len(conversation):
+                    user_text = conversation[i]
+                    response_text = conversation[i + 1]
+                    combined_text += f'{user_text}\n{response_text}'
 
-                if i < len(conversation) - 1:
-                    combined_text += '\n'
-
-            combined_text +=f' {self.tokenizer.eos_token}'
-
+                    if i + 2 < len(conversation):
+                        combined_text += '\n'
+            combined_text += f'{self.tokenizer.eos_token}'
         else:
-            prompt, response = conversation if isinstance(conversation, tuple) else (conversation[0][1], conversation[1][1])
-            combined_text = f'{self.tokenizer.bos_token} User: {prompt}\nBot: {response} {self.tokenizer.eos_token}'
+            prompt, response = conversation if isinstance(conversation, tuple) else (conversation[0], conversation[1])
+            combined_text = f'{self.tokenizer.bos_token}{prompt}\n{response} {self.tokenizer.eos_token}'
 
         encodings = self.tokenizer(combined_text,
                                    truncation=True,
@@ -98,41 +97,40 @@ class ProcessData:
                 continue
 
             # Split chat into messages
-            messages = []
             current_messages = chat_text.split('\n')
             current_messages = [message for message in current_messages if message.strip()]
 
             if len(current_messages) < 2:
                 continue
 
-            for i in range(len(current_messages) - 1):
+            for i in range(0, len(current_messages) - 1, 2):
+                if i + 1 >= len(current_messages):
+                    continue
+
                 prompt = self.preprocess_lines(current_messages[i])
                 response = self.preprocess_lines(current_messages[i + 1])
 
                 if 3 <= len(prompt.split()) <= 50 and 3 <= len(response.split()) <= 50:
-                    user_role = 'user' if i % 2 == 0 else 'bot'
-                    bot_role = 'bot' if i % 2 == 0 else 'user'
+                    dialog_data.append((prompt, response))
 
-                    dialog_data.append((
-                        (user_role, prompt),
-                        (bot_role, response)
-                    ))
+            if len(current_messages) >= 4:
+                for start_idx in range(0, min(len(current_messages) - 3, 2)):
+                    end_idx = min(start_idx + 8, len(current_messages))
+                    if end_idx - start_idx < 4:
+                        continue
 
-            if len(current_messages) >= 3:
-                for end_idx in range(2, min(len(current_messages), 6)):
                     context = []
-                    for i in range(end_idx + 1):
+                    for i in range(start_idx, end_idx):
                         text = self.preprocess_lines(current_messages[i])
 
                         if len(text.split()) > 50:
                             continue
 
-                        role = 'user' if i % 2 == 0 else 'bot'
-                        context.append((role, text))
+                        context.append(text)
 
-                    if len(context) >= 3 :
+                    if len(context) >= 4:
                         dialog_data.append(context)
-
+        logger.info(f'Created {len(dialog_data)} training examples.')
         return dialog_data
 
     # Create datasets

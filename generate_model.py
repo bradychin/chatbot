@@ -1,7 +1,6 @@
 #--------- Import libraries ---------#
 import sys
-
-from langchain_community.retrievers.kendra import combined_text
+import pandas as pd
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset, random_split
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, get_linear_schedule_with_warmup
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 #--------- Tokenize ---------#
 class DialogManagement(Dataset):
-    def __init__(self, dialog_pairs, tokenizer, max_length=256):
+    def __init__(self, dialog_pairs, tokenizer, max_length=128):
         self.dialog_pairs = dialog_pairs
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -29,18 +28,18 @@ class DialogManagement(Dataset):
         if isinstance(conversation, list) and len(conversation) > 1:
             combined_text = f'{self.tokenizer.bos_token}'
 
-            for i, (speaker, text) in enumerate(conversation):
-                prefix = 'User: ' if speaker == 'user' else 'Bot: '
-                combined_text += f'{prefix}{text}'
+            for i in range(0, len(conversation) - 1, 2):
+                if i + 1 < len(conversation):
+                    user_text = conversation[i]
+                    response_text = conversation[i + 1]
+                    combined_text += f'{user_text}\n{response_text}'
 
-                if i < len(conversation) - 1:
-                    combined_text += '\n'
-
-            combined_text +=f' {self.tokenizer.eos_token}'
-
+                    if i + 2 < len(conversation):
+                        combined_text += '\n'
+            combined_text += f'{self.tokenizer.eos_token}'
         else:
-            prompt, response = conversation if isinstance(conversation, tuple) else (conversation[0][1], conversation[1][1])
-            combined_text = f'{self.tokenizer.bos_token} User: {prompt}\nBot: {response} {self.tokenizer.eos_token}'
+            prompt, response = conversation if isinstance(conversation, tuple) else (conversation[0], conversation[1])
+            combined_text = f'{self.tokenizer.bos_token}{prompt}\n{response} {self.tokenizer.eos_token}'
 
         encodings = self.tokenizer(combined_text,
                                    truncation=True,
@@ -60,28 +59,21 @@ class DialogManagement(Dataset):
 
 #--------- Process Data ---------#
 class ProcessData:
-    def __init__(self, movie_lines_path, movie_conversations_path, train_val_split=0.2):
-        self.movie_lines_path = movie_lines_path
-        self.movie_conversations_path = movie_conversations_path
+    def __init__(self, personachat_file_path, train_val_split=0.2):
+        self.personachat_file_path = personachat_file_path
         self.train_val_split = train_val_split
 
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         special_tokens = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}
         self.tokenizer.add_special_tokens(special_tokens)
+
         try:
-            self.lines = self.load_lines()
-            logger.info(f'Loaded {len(self.lines)} lines.')
+            self.dialog_data = self.load_personachat_data()
+            logger.info(f'Created {len(self.dialog_data)} dialog paris.')
         except FileNotFoundError:
-            logger.error('File "movie_lines.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_lines.txt')
+            logger.error(f'File "{personachat_file_path}" not found.')
             sys.exit(1)
-        try:
-            self.conversations = self.load_conversations()
-            logger.info(f'Loaded {len(self.conversations)} conversations.')
-        except FileNotFoundError:
-            logger.error('File "movie_conversations.txt" not found. \nExpected in file path: cornell movie-dialogs corpus/movie_conversations.txt')
-            sys.exit(1)
-        self.dialog_data = self.create_dialog()
-        logger.info(f'Created {len(self.dialog_data)} dialog pairs.')
+
         self.train_dataset, self.val_dataset = self.create_datasets()
 
     def preprocess_lines(self, lines):
@@ -92,82 +84,53 @@ class ProcessData:
         lines = re.sub(r"['']", "'", lines)
         return lines
 
-    # Import lines
-    def load_lines(self):
-        lines = {}
-        with open(self.movie_lines_path, 'r', encoding='iso-8859-1') as file:
-            for line in file:
-                parts = line.strip().split(' +++$+++ ')
-                if len(parts) >= 5:
-                    line_id, character_id, text = parts[0], parts[1], parts[4]
-                    text = self.preprocess_lines(text.strip())
-                    if text:
-                        lines[line_id] = {'text': text, 'character_id': character_id}
-        return lines
-
-    # Import conversations
-    def load_conversations(self):
-        conversations = []
-        with open(self.movie_conversations_path, 'r', encoding='iso-8859-1') as file:
-            for i, line in enumerate(file):
-
-                # Uncomment to use a subset of dataset for testing
-                number_of_lines = 400
-                if i >= number_of_lines:
-                    break
-
-                parts = line.strip().split(' +++$+++ ')
-                if len(parts) >= 4:
-                    line_ids = eval(parts[3])
-                    if len(line_ids) >= 2:
-                        conversations.append(line_ids)
-        return conversations
-
     # Create dialog
-    def create_dialog(self):
+    def load_personachat_data(self):
+        logger.info(f'Loading data from {self.personachat_file_path}')
+        df = pd.read_csv(self.personachat_file_path)
         dialog_data = []
-        for conversation in self.conversations:
-            if len(conversation) < 2:
+
+        for _, row in df.iterrows():
+            chat_text = row['chat']
+
+            if not isinstance(chat_text, str) or not chat_text.strip():
                 continue
 
-            valid_lines = []
+            # Split chat into messages
+            current_messages = chat_text.split('\n')
+            current_messages = [message for message in current_messages if message.strip()]
 
-            for line_id in conversation:
-                if line_id in self.lines:
-                    valid_lines.append(line_id)
-
-            if len(valid_lines) < 2:
+            if len(current_messages) < 2:
                 continue
 
-            for i in range(len(valid_lines) - 1):
-                prompt_id = valid_lines[i]
-                response_id = valid_lines[i + 1]
+            for i in range(0, len(current_messages) - 1, 2):
+                if i + 1 >= len(current_messages):
+                    continue
 
-                prompt = self.lines[prompt_id]["text"]
-                response = self.lines[response_id]["text"]
+                prompt = self.preprocess_lines(current_messages[i])
+                response = self.preprocess_lines(current_messages[i + 1])
 
-                # Filter out very short or very long utterances
                 if 3 <= len(prompt.split()) <= 50 and 3 <= len(response.split()) <= 50:
-                    # For simplicity, alternate user/bot roles in the conversation
-                    # In a real implementation, you might want to track speaker identity
-                    dialog_data.append((("user", prompt), ("bot", response)))
+                    dialog_data.append((prompt, response))
 
-            if len(valid_lines) >= 3:
-                for end_idx in range(2, min(len(valid_lines), 6)):
+            if len(current_messages) >= 4:
+                for start_idx in range(0, min(len(current_messages) - 3, 2)):
+                    end_idx = min(start_idx + 8, len(current_messages))
+                    if end_idx - start_idx < 4:
+                        continue
+
                     context = []
-                    for i in range(end_idx + 1):
-                        line_id = valid_lines[i]
-                        text = self.lines[line_id]['text']
+                    for i in range(start_idx, end_idx):
+                        text = self.preprocess_lines(current_messages[i])
 
                         if len(text.split()) > 50:
                             continue
 
-                        role = 'user' if i % 2 == 0 else 'bot'
-                        context.append((role, text))
+                        context.append(text)
 
-                    if len(context) >= 3:
+                    if len(context) >= 4:
                         dialog_data.append(context)
-
+        logger.info(f'Created {len(dialog_data)} training examples.')
         return dialog_data
 
     # Create datasets
@@ -188,16 +151,16 @@ class ProcessData:
                                   num_workers=2,
                                   pin_memory=True)
         validation_loader = DataLoader(self.val_dataset,
-                                batch_size=batch_size,
-                                shuffle=False,
-                                num_workers=2,
-                                pin_memory=True)
+                                       batch_size=batch_size,
+                                       shuffle=False,
+                                       num_workers=2,
+                                       pin_memory=True)
         return train_loader, validation_loader
 
 #--------- Model ---------#
 class GenerateModel:
-    def __init__(self, movie_lines_path, movie_conversations_path):
-        self.data_processor = ProcessData(movie_lines_path, movie_conversations_path)
+    def __init__(self, personachat_file_path):
+        self.data_processor = ProcessData(personachat_file_path)
         self.tokenizer = self.data_processor.tokenizer
         self.model = GPT2LMHeadModel.from_pretrained('gpt2')
         self.model.resize_token_embeddings(len(self.tokenizer))
@@ -221,7 +184,7 @@ class GenerateModel:
         training_steps = len(train_loader) * epochs
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
-            num_warmup_steps=int(0.1*training_steps),
+            num_warmup_steps=int(0.1 * training_steps),
             num_training_steps=training_steps
         )
 
@@ -254,7 +217,7 @@ class GenerateModel:
                         loss = outputs.loss / gradient_accumulation
                     scaler.scale(loss).backward()
                     if (batch_index + 1) % gradient_accumulation == 0:
-                        scaler.unscale(optimizer)
+                        scaler.unscale_(optimizer)
                         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                         scaler.step(optimizer)
                         scaler.update()
@@ -346,10 +309,9 @@ class GenerateModel:
 
 #--------- Main Function ---------#
 def main():
-    movie_lines_path = 'cornell movie-dialogs corpus/movie_lines.txt'
-    movie_conversations_path = 'cornell movie-dialogs corpus/movie_conversations.txt'
+    personachat_file_path = 'data/personachat.csv'
 
-    model = GenerateModel(movie_lines_path, movie_conversations_path)
+    model = GenerateModel(personachat_file_path)
     model.fine_tune()
 
 if __name__ == '__main__':

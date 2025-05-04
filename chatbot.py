@@ -16,15 +16,10 @@ class ResponseGenerator:
     def load_model(self, saved_model):
         try:
             model = GPT2LMHeadModel.from_pretrained(saved_model)
-            logger.info('Model load success.')
-        except OSError:
-            logger.error('Model load was not successful.')
-            sys.exit(1)
-        try:
             tokenizer = GPT2Tokenizer.from_pretrained(saved_model)
-            logger.info('Tokenizer load success.')
-        except OSError:
-            logger.error('Tokenizer load was not successful.')
+            logger.info('Model and Tokenizer load success.')
+        except:
+            logger.error('Model or Tokenizer load was not successful.')
             sys.exit(1)
 
         if tokenizer.pad_token is None:
@@ -42,15 +37,16 @@ class ResponseGenerator:
         encoded_prompt = self.tokenizer.encode(formatted_prompt, return_tensors='pt').to(self.device)
 
         output_sequences = self.model.generate(input_ids=encoded_prompt,
-                                               max_new_tokens=100,
-                                               temperature=0.8,
+                                               max_new_tokens=150,
+                                               temperature=0.7,
                                                top_k=50,
                                                top_p=0.95,
                                                do_sample=True,
                                                num_return_sequences=1,
                                                pad_token_id=self.tokenizer.pad_token_id,
                                                eos_token_id=self.tokenizer.eos_token_id,
-                                               no_repeat_ngram_size=3)
+                                               no_repeat_ngram_size=2,
+                                               repetition_penalty=1.1)
 
         complete_response = self.tokenizer.decode(output_sequences[0], skip_special_tokens=True)
         input_text = self.tokenizer.decode(encoded_prompt[0], skip_special_tokens=True)
@@ -61,75 +57,58 @@ class ResponseGenerator:
 
         response_text = self.clean_response(response_text)
 
-        if not response_text.strip():
-            response_text = 'Blank response'
-
         return response_text.capitalize()
 
     def clean_response(self, response):
+        # More aggressive cleaning to remove problematic patterns
         response = re.sub(r'\s+', ' ', response).strip()
+
+        # Remove any "user:" or "bot:" prefixes that might have leaked into the output
+        response = re.sub(r'(?i)(^|\s)(user:|bot:)', '', response)
+
+        # Remove strange tokens or markers that might appear
         response = re.sub(r'[^\w\s.,?!\'"-]', '', response)
+
+        # Standardize quotes
         response = re.sub(r'[""]', '"', response)
         response = re.sub(r"['']", "'", response)
-        return response
 
+        # Remove user/bot references
+        response = re.sub(r'(?i)\b(user|bot)\b', '', response)
+
+        response = re.sub(r'\s+([.,!?;:])', r'\1', response)
+
+        # Clean up spacing after removing terms
+        response = re.sub(r'\s+', ' ', response).strip()
+
+        # Truncate at first newline to avoid multi-turn responses
+        if '\n' in response:
+            response = response.split('\n')[0]
+
+        return response
 
 # --------- Chatbot ---------#
 class Chatbot:
-    def __init__(self, response_generator, max_history=5):
+    def __init__(self, response_generator, max_history=8):
         self.response_generator = response_generator
-        self.max_history = max_history
-        self.conversation_history = []
         self.session_context = 'You are a helpful chatbot.'
 
-    def add_to_history(self, role, message):
-        """Add a message to the conversation history."""
-        self.conversation_history.append({"role": role, "content": message})
-        # Keep only the most recent messages based on max_history
-        if len(self.conversation_history) > self.max_history * 2:  # *2 because each turn has 2 messages (user + bot)
-            self.conversation_history = self.conversation_history[-self.max_history * 2:]
-
-    def format_conversation_for_prompt(self):
-        """Format the conversation history into a prompt for the model."""
-        formatted_history = f'{self.session_context}\n\n'
-        for entry in self.conversation_history:
-            prefix = "User: " if entry["role"] == "user" else "Bot: "
-            formatted_history += f"{prefix} {entry['content']}\n"
-
-        return formatted_history.strip()
-
     def generate_response(self, user_input):
-        """Generate a response based on the user input and conversation history."""
-        # Add user message to history
-        self.add_to_history("user", user_input)
-
         if not user_input.strip():
             return 'I did not receive an input'
 
-        # Build prompt with conversation context
-        if len(self.conversation_history) <= 2:  # First exchange
-            prompt = f"{self.session_context}\nUser: {user_input}Bot:"
-        else:
-            # Create a context window from recent conversation
-            # Format the conversation in a way that helps the model better understand the flow
-            prompt = self.format_conversation_for_prompt()
-            prompt += "\nBot:"  # Add prompt for bot to continue
-
-        # Generate response using the conversation-formatted prompt
+        prompt = f'{self.session_context}\nUser: {user_input}\nBot:'
         response = self.response_generator.generate(prompt)
 
-        # Clean up the response if it starts with "Bot:" (which can happen)
         if len(response.split()) < 3 or not any(char.isalpha() for char in response):
-            response = 'I cannot formulate a good response'
-
-        # Add bot response to history
-        self.add_to_history("bot", response)
+            response = 'I need to think about that. Could you ask me something else?'
 
         return response
 
 # --------- Main ---------#
 def main():
-    saved_model = 'models/model'
+    # saved_model = 'models/checkpoints/checkpoint_epoch_0_batch_2000_lr2e-5'
+    saved_model = 'models/model_rev2'
     response_generator = ResponseGenerator(saved_model)
     chatbot = Chatbot(response_generator)
 

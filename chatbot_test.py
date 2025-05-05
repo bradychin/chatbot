@@ -1,32 +1,34 @@
 # --------- Import libraries ---------#
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import torch
-import sys
-import logging
 import re
+import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 # --------- Response Generator ---------#
 class ResponseGenerator:
     def __init__(self, model_path):
         self.model, self.tokenizer, self.device = self._load_model(model_path)
 
-    def _load_model(self, saved_model): # Make function
-        """Load model and tokenizer"""
+    def _load_model(self, model_path):
+        """Load the model and tokenizer from the specified path."""
         try:
-            model = GPT2LMHeadModel.from_pretrained(saved_model)
-            tokenizer = GPT2Tokenizer.from_pretrained(saved_model)
-            logger.info('Model and Tokenizer load success.')
+            model = GPT2LMHeadModel.from_pretrained(model_path)
+            tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+            logger.info('Model and Tokenizer loaded successfully.')
         except Exception as e:
-            logger.error(f'Failed to load Model or Tokenizer: {e}')
-            sys.exit(1)
+            logger.error(f'Failed to load model or tokenizer: {e}')
+            raise
 
+        # Configure tokenizer padding
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.pad_token_id
 
+        # Set device
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model.to(device)
         model.eval()
@@ -34,41 +36,47 @@ class ResponseGenerator:
         return model, tokenizer, device
 
     def generate(self, prompt):
-        """Generate response for the given prompt."""
+        """Generate a response for the given prompt."""
+        # Format and encode prompt
         formatted_prompt = f'{self.tokenizer.bos_token}{prompt}'
         encoded_prompt = self.tokenizer.encode(formatted_prompt, return_tensors='pt').to(self.device)
 
-        output_sequences = self.model.generate(input_ids=encoded_prompt,
-                                               max_new_tokens=150,
-                                               temperature=0.7,
-                                               top_k=50,
-                                               top_p=0.95,
-                                               do_sample=True,
-                                               num_return_sequences=1,
-                                               pad_token_id=self.tokenizer.pad_token_id,
-                                               eos_token_id=self.tokenizer.eos_token_id,
-                                               no_repeat_ngram_size=2,
-                                               repetition_penalty=1.1)
+        # Generate response
+        output_sequences = self.model.generate(
+            input_ids=encoded_prompt,
+            max_new_tokens=150,
+            temperature=0.7,
+            top_k=50,
+            top_p=0.95,
+            do_sample=True,
+            num_return_sequences=1,
+            pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+            no_repeat_ngram_size=2,
+            repetition_penalty=1.1
+        )
 
+        # Decode and extract response
         complete_response = self.tokenizer.decode(output_sequences[0], skip_special_tokens=True)
         input_text = self.tokenizer.decode(encoded_prompt[0], skip_special_tokens=True)
         response_text = complete_response[len(input_text):]
 
+        # Clean up the response
         if self.tokenizer.eos_token in response_text:
             response_text = response_text[:response_text.find(self.tokenizer.eos_token)]
 
         response_text = self._clean_response(response_text)
-
         return response_text.capitalize()
 
-    def _clean_response(self, response): # Make function
-        # More aggressive cleaning to remove problematic patterns
+    def _clean_response(self, response):
+        """Clean and format the response text."""
+        # Basic cleaning
         response = re.sub(r'\s+', ' ', response).strip()
 
-        # Remove any "user:" or "bot:" prefixes that might have leaked into the output
+        # Remove unwanted prefixes
         response = re.sub(r'(?i)(^|\s)(user:|bot:)', '', response)
 
-        # Remove strange tokens or markers that might appear
+        # Remove non-standard characters
         response = re.sub(r'[^\w\s.,?!\'"-]', '', response)
 
         # Standardize quotes
@@ -78,16 +86,18 @@ class ResponseGenerator:
         # Remove user/bot references
         response = re.sub(r'(?i)\b(user|bot)\b', '', response)
 
+        # Fix spacing around punctuation
         response = re.sub(r'\s+([.,!?;:])', r'\1', response)
 
-        # Clean up spacing after removing terms
+        # Clean up extra spaces
         response = re.sub(r'\s+', ' ', response).strip()
 
-        # Truncate at first newline to avoid multi-turn responses
+        # Take only first line
         if '\n' in response:
             response = response.split('\n')[0]
 
         return response
+
 
 # --------- Chatbot ---------#
 class Chatbot:
@@ -96,21 +106,24 @@ class Chatbot:
         self.session_context = 'You are a helpful chatbot.'
 
     def generate_response(self, user_input):
-        """Generate response for to the user input."""
+        """Generate a response to the user input."""
         if not user_input.strip():
             return 'I did not receive an input'
 
         prompt = f'{self.session_context}\nUser: {user_input}\nBot:'
         response = self.response_generator.generate(prompt)
 
+        # Fallback for very short or invalid responses
         if len(response.split()) < 3 or not any(char.isalpha() for char in response):
             response = 'I need to think about that. Could you ask me something else?'
 
         return response
 
+
 # --------- Main ---------#
 def main():
-    model_path = 'models/model_rev2'
+    """Run the chatbot application."""
+    model_path = 'models/model_rev2'  # Path to your trained model
 
     try:
         response_generator = ResponseGenerator(model_path)
@@ -130,13 +143,14 @@ def main():
                 print(f'Chatbot: {response}\n')
 
             except Exception as e:
-                print(f"Error occurred: {e}")
-                print("Restarting conversation...")
+                logger.error(f"Error occurred: {e}")
+                print("An error occurred. Let's continue our conversation.")
                 continue
 
     except Exception as e:
-        logger.error(f'Failed to initialize chatbot: {e}')
-        print('Could not start chatbot.')
+        logger.error(f"Failed to initialize chatbot: {e}")
+        print("Could not start the chatbot. Please check the logs for details.")
+
 
 if __name__ == '__main__':
     main()

@@ -13,7 +13,7 @@ epochs = 4
 batch_size = 8
 patience = 1
 gradient_accumulation = 2
-lr = 2e-6
+lr = 5e-6
 weight_decay=0.01
 
 #--------- dialog_management.py ---------#

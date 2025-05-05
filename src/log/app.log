@@ -20,3 +20,22 @@
 2025-05-05 00:13:28,493 INFO: main.py -> Starting chatbot...
 2025-05-05 00:15:47,551 INFO: main.py -> Starting chatbot...
 2025-05-05 00:15:47,643 INFO: response_generator.py -> Model and Tokenizer load success.
+2025-05-05 00:25:04,993 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 00:25:05,784 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat_full.csv
+2025-05-05 00:25:07,853 INFO: data_processor.py -> Created 666833 training examples.
+2025-05-05 00:25:07,854 INFO: data_processor.py -> Created 666833 dialog paris.
+2025-05-05 00:25:07,875 INFO: data_processor.py -> Training dataset: 533467 dialog pairs.
+2025-05-05 00:25:07,875 INFO: data_processor.py -> Validation dataset: 133366 dialog pairs.
+
+2025-05-05 00:25:09,251 INFO: model_trainer.py -> Using device: cpu
+
+2025-05-05 00:25:25,977 INFO: model_trainer.py -> Epoch: 0, Batch 0, Loss: 13.769868850708008
+2025-05-05 00:27:26,709 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 00:27:27,050 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat_full.csv
+2025-05-05 00:27:28,993 INFO: data_processor.py -> Created 666833 training examples.
+2025-05-05 00:27:28,995 INFO: data_processor.py -> Created 666833 dialog paris.
+2025-05-05 00:27:29,011 INFO: data_processor.py -> Training dataset: 533467 dialog pairs.
+2025-05-05 00:27:29,011 INFO: data_processor.py -> Validation dataset: 133366 dialog pairs.
+
+2025-05-05 00:27:30,328 INFO: model_trainer.py -> Using device: cpu
+

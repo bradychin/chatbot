@@ -63,7 +63,7 @@ class ModelTrainer:
                     labels = batch['labels'].to(device)
 
                     if input_ids.size(0) == 0:
-                        logger.warning('Empty batch. Skipping')
+                        print('Empty batch. Skipping')
                         continue
 
                     if device.type == 'cuda':
@@ -95,7 +95,7 @@ class ModelTrainer:
                     total_train_loss += loss.item() * config.gradient_accumulation
 
                     if batch_index % 50 == 0:
-                        logger.info(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * config.gradient_accumulation}')
+                        print(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * config.gradient_accumulation}')
                     if batch_index % 250 == 0 and batch_index > 0:
                         self._save_model(config.checkpoint_file_path.format(epoch=epoch, batch_index=batch_index))
 

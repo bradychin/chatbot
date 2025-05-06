@@ -6,15 +6,15 @@ from torch.cuda.amp import autocast, GradScaler
 from src.log.logger import get_logger
 logger = get_logger(__name__)
 
-#--------- Import Classes ---------#
+#--------- Import Scripts ---------#
 from src.utils.data_processor import DataProcessor
 from src import config
 
 #--------- Model ---------#
 class ModelTrainer:
-    """Train the GPT2 model."""
-    def __init__(self, data_file_path):
-        self.data_processor = DataProcessor(data_file_path)
+    """Train GPT2 model."""
+    def __init__(self, dataset_file_path):
+        self.data_processor = DataProcessor(dataset_file_path)
         self.tokenizer = self.data_processor.tokenizer
         self.model = GPT2LMHeadModel.from_pretrained('gpt2')
         self.model.resize_token_embeddings(len(self.tokenizer))
@@ -26,16 +26,15 @@ class ModelTrainer:
         print(f'Model saved to {path}')
 
     def fine_tune(self):
-        """Fine tune model on dialog data."""
+        """Fine tune model on dialog data"""
         train_loader, validation_loader = self.data_processor.get_dataloaders(batch_size=config.batch_size)
 
-        # Set up device
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f'Using device: {device}\n')
-        self.model.to(device)
 
-        # Set up optimizer and scheduler
+        self.model.to(device)
         optimizer = AdamW(self.model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
+
         training_steps = len(train_loader) * config.epochs
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
@@ -51,10 +50,9 @@ class ModelTrainer:
 
         # Training loop
         for epoch in range(config.epochs):
-            # Training phase
             self.model.train()
-            total_train_loss = 0
             optimizer.zero_grad()
+            total_train_loss = 0
 
             for batch_index, batch in enumerate(train_loader):
                 try:
@@ -94,13 +92,13 @@ class ModelTrainer:
 
                     total_train_loss += loss.item() * config.gradient_accumulation
 
-                    if batch_index % 50 == 0:
+                    if batch_index % 100 == 0:
                         print(f'Epoch: {epoch}, Batch {batch_index}, Loss: {loss.item() * config.gradient_accumulation}')
-                    if batch_index % 250 == 0 and batch_index > 0:
+                    if batch_index % 1000 == 0 and batch_index > 0:
                         self._save_model(config.checkpoint_file_path.format(epoch=epoch, batch_index=batch_index))
 
                 except Exception as e:
-                    logger.error(f'Error in training batch {batch_index}: {e}')
+                    logger.error(f'Error in training batch {batch_index}:{e}')
                     continue
 
             if (batch_index + 1) % config.gradient_accumulation != 0:
@@ -118,7 +116,7 @@ class ModelTrainer:
             average_train_loss = total_train_loss / len(train_loader)
             logger.info(f'Epoch: {epoch} Completed. Average Loss: {average_train_loss}')
 
-            # Validation phase
+            # Validation stage
             self.model.eval()
             total_validation_loss = 0
 
@@ -138,7 +136,6 @@ class ModelTrainer:
 
                         validation_loss = validation_outputs.loss
                         total_validation_loss += validation_loss.item()
-
                     except Exception as e:
                         logger.error(f'Error in validation batch: {e}')
                         continue
@@ -151,7 +148,7 @@ class ModelTrainer:
                 best_epoch = epoch
                 epochs_without_improvement = 0
                 self._save_model(config.best_model_file_path.format(best_validation_loss=best_validation_loss))
-                print(f'New best model saved with validation loss: {best_validation_loss:.4f}')
+                print(f'New best model saved with validation loss: {best_validation_loss}')
             else:
                 epochs_without_improvement += 1
                 if epochs_without_improvement >= config.patience:
@@ -159,9 +156,9 @@ class ModelTrainer:
                     break
 
         self._save_model(config.final_model_file_path)
-        print('\nTraining completed.')
-        print(f'Final model saved to: {config.final_model_file_path}.')
-        print(f'Best model saved to: {config.best_model_file_path.format(best_validation_loss=best_validation_loss)}.')
+        print('\nSaved:')
+        print(f'Final model: {config.final_model_file_path}.')
+        print(f'Best model: {config.best_model_file_path.format(best_validation_loss=best_validation_loss)}.')
         print(f'    > Epoch: {best_epoch}')
         print(f'    > Validation Loss: {best_validation_loss}.')
 

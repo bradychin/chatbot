@@ -7,11 +7,11 @@ from torch.utils.data import DataLoader, random_split
 from src.log.logger import get_logger
 logger = get_logger(__name__)
 
-#--------- Import Classes ---------#
+#--------- Import Scripts ---------#
 from src.utils.dialog_manager import DialogManager
 
-#--------- Data Processor ---------#
-def preprocess_text(text): # Make function
+#--------- Functions ---------#
+def preprocess_text(text):
     text = text.lower()
     text = re.sub(r'\s+', ' ', text).strip()
     text = re.sub(r'[^\w\s.,?!\'"-]', '', text)
@@ -19,12 +19,12 @@ def preprocess_text(text): # Make function
     text = re.sub(r"['']", "'", text)
     return text
 
+#--------- Data Processor ---------#
 class DataProcessor:
     def __init__(self, data_file_path, train_val_split=0.2):
         self.data_file_path = data_file_path
         self.train_val_split = train_val_split
 
-        # Initialize tokenizer
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         special_tokens = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}
         self.tokenizer.add_special_tokens(special_tokens)
@@ -51,36 +51,51 @@ class DataProcessor:
                 continue
 
             # Split chat into messages
-            messages = [m.strip() for m in chat_text.split('\n') if m.strip()]
+            current_messages = chat_text.split('\n')
+            current_messages = [message for message in current_messages if message.strip()]
 
-            if len(messages) < 2:
+            if len(current_messages) < 2:
                 continue
 
-            clean_messages = [preprocess_text(message) for message in messages]
-            clean_messages = [message for message in clean_messages if len(message.split()) <= 50]
+            for i in range(0, len(current_messages) - 1, 2):
+                if i + 1 >= len(current_messages):
+                    continue
 
-            if len(clean_messages) >= 2:
-                for window_size in range(2, min(9, len(clean_messages) + 1)):
-                    for start_idx in range(0, len(clean_messages) - window_size + 1):
-                        window = clean_messages[start_idx:start_idx + window_size]
-                        if all(len(message.split()) >= 3 for message in window):
-                            dialog_data.append(window)
+                prompt = preprocess_text(current_messages[i])
+                response = preprocess_text(current_messages[i + 1])
 
+                if 3 <= len(prompt.split()) <= 50 and 3 <= len(response.split()) <= 50:
+                    dialog_data.append((prompt, response))
+
+            if len(current_messages) >= 4:
+                for start_idx in range(0, min(len(current_messages) - 3, 2)):
+                    end_idx = min(start_idx + 8, len(current_messages))
+                    if end_idx - start_idx < 4:
+                        continue
+
+                    context = []
+                    for i in range(start_idx, end_idx):
+                        text = preprocess_text(current_messages[i])
+
+                        if len(text.split()) > 50:
+                            continue
+
+                        context.append(text)
+
+                    if len(context) >= 4:
+                        dialog_data.append(context)
 
         logger.info(f'Created {len(dialog_data)} training examples.')
         return dialog_data
 
     # Create datasets
     def _create_datasets(self):
-        """Split into training and validation sets."""
         full_dataset = DialogManager(self.dialog_data, self.tokenizer)
         validation_size = int(len(full_dataset) * self.train_val_split)
         train_size = len(full_dataset) - validation_size
         train_dataset, validation_dataset = random_split(full_dataset, [train_size, validation_size])
-
         logger.info(f'Training dataset: {train_size} dialog pairs.')
         logger.info(f'Validation dataset: {validation_size} dialog pairs.\n')
-
         return train_dataset, validation_dataset
 
     # Load train and validation data
@@ -95,5 +110,4 @@ class DataProcessor:
                                        shuffle=False,
                                        num_workers=2,
                                        pin_memory=True)
-
         return train_loader, validation_loader

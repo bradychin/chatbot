@@ -87,4 +87,3 @@ class ResponseGenerator:
         response_text = clean_response(response_text)
 
         return response_text.capitalize()
-

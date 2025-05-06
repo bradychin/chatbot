@@ -39,3 +39,90 @@
 
 2025-05-05 00:27:30,328 INFO: model_trainer.py -> Using device: cpu
 
+2025-05-05 00:52:00,112 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 00:52:00,329 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat_full.csv
+2025-05-05 00:52:03,352 INFO: data_processor.py -> Created 666833 training examples.
+2025-05-05 00:52:03,353 INFO: data_processor.py -> Created 666833 dialog paris.
+2025-05-05 00:52:03,373 INFO: data_processor.py -> Training dataset: 533467 dialog pairs.
+2025-05-05 00:52:03,373 INFO: data_processor.py -> Validation dataset: 133366 dialog pairs.
+
+2025-05-05 00:52:04,551 INFO: model_trainer.py -> Using device: cpu
+
+2025-05-05 07:43:58,903 ERROR: model_trainer.py -> Error in training batch 9750: Error while serializing: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" })
+2025-05-05 08:36:27,966 ERROR: model_trainer.py -> Error in training batch 11000: Error while serializing: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" })
+2025-05-05 15:04:02,669 INFO: main.py -> Starting chatbot...
+2025-05-05 15:04:15,765 ERROR: response_generator.py -> Failed to load Model or Tokenizer: Error while deserializing header: MetadataIncompleteBuffer
+2025-05-05 15:05:47,895 INFO: main.py -> Starting chatbot...
+2025-05-05 15:06:09,452 INFO: response_generator.py -> Model and Tokenizer load success.
+2025-05-05 15:06:59,430 INFO: main.py -> Starting chatbot...
+2025-05-05 15:07:20,950 INFO: response_generator.py -> Model and Tokenizer load success.
+2025-05-05 15:08:17,602 INFO: main.py -> Starting chatbot...
+2025-05-05 15:08:37,749 INFO: response_generator.py -> Model and Tokenizer load success.
+2025-05-05 15:09:35,177 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 15:09:35,659 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 15:09:37,289 INFO: data_processor.py -> Created 80543 training examples.
+2025-05-05 15:09:37,290 INFO: data_processor.py -> Created 80543 dialog paris.
+2025-05-05 15:09:37,292 INFO: data_processor.py -> Training dataset: 64435 dialog pairs.
+2025-05-05 15:09:37,292 INFO: data_processor.py -> Validation dataset: 16108 dialog pairs.
+
+2025-05-05 15:09:39,079 INFO: model_trainer.py -> Using device: cpu
+
+2025-05-05 16:22:42,251 INFO: response_generator.py -> Model and Tokenizer load success.
+2025-05-05 18:59:22,410 INFO: main.py -> Starting chatbot...
+2025-05-05 18:59:22,522 INFO: response_generator.py -> Model and Tokenizer load success.
+2025-05-05 19:21:43,244 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/checkpoints/checkpdoint_epoch_0_batch_2000_lr2e-5. Starting training...
+2025-05-05 19:21:43,864 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 19:21:44,014 INFO: data_processor.py -> Created 10036 training examples.
+2025-05-05 19:21:44,015 INFO: data_processor.py -> Created 10036 dialog paris.
+2025-05-05 19:21:44,018 INFO: data_processor.py -> Training dataset: 8029 dialog pairs.
+2025-05-05 19:21:44,018 INFO: data_processor.py -> Validation dataset: 2007 dialog pairs.
+
+2025-05-05 19:21:45,385 INFO: model_trainer.py -> Using device: cpu
+
+2025-05-05 19:22:03,751 INFO: model_trainer.py -> Epoch: 0, Batch 0, Loss: 13.080790519714355
+2025-05-05 19:42:44,097 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 19:42:44,572 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 19:42:44,582 ERROR: model_trainer.py -> Training failed: 'DataProcessor' object has no attribute 'preprocess_lines'
+2025-05-05 19:42:44,585 INFO: main.py -> Starting chatbot...
+2025-05-05 19:42:44,585 ERROR: response_generator.py -> Failed to load Model or Tokenizer: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model'. Use `repo_type` argument if needed.
+2025-05-05 19:45:28,699 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 19:45:29,173 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 19:45:29,188 ERROR: model_trainer.py -> Training failed: preprocess_text() missing 1 required positional argument: 'text'
+2025-05-05 19:45:29,191 INFO: main.py -> Starting chatbot...
+2025-05-05 19:45:29,191 ERROR: response_generator.py -> Failed to load Model or Tokenizer: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model'. Use `repo_type` argument if needed.
+2025-05-05 19:45:57,995 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 19:45:58,324 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 19:45:58,337 ERROR: model_trainer.py -> Training failed: 'DataProcessor' object has no attribute 'preprocess_lines'
+2025-05-05 19:45:58,340 INFO: main.py -> Starting chatbot...
+2025-05-05 19:45:58,340 ERROR: response_generator.py -> Failed to load Model or Tokenizer: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model'. Use `repo_type` argument if needed.
+2025-05-05 19:46:27,829 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 19:46:28,221 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 19:46:28,374 INFO: data_processor.py -> Created 10036 training examples.
+2025-05-05 19:46:28,374 INFO: data_processor.py -> Created 10036 dialog paris.
+2025-05-05 19:46:28,377 INFO: data_processor.py -> Training dataset: 8029 dialog pairs.
+2025-05-05 19:46:28,377 INFO: data_processor.py -> Validation dataset: 2007 dialog pairs.
+
+2025-05-05 19:46:29,687 INFO: model_trainer.py -> Using device: cpu
+
+2025-05-05 19:46:48,761 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/model. Starting training...
+2025-05-05 19:46:49,197 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 19:46:49,347 INFO: data_processor.py -> Created 10036 training examples.
+2025-05-05 19:46:49,347 INFO: data_processor.py -> Created 10036 dialog paris.
+2025-05-05 19:46:49,348 INFO: data_processor.py -> Training dataset: 8029 dialog pairs.
+2025-05-05 19:46:49,348 INFO: data_processor.py -> Validation dataset: 2007 dialog pairs.
+
+2025-05-05 19:46:50,609 INFO: model_trainer.py -> Using device: cpu
+
+2025-05-05 20:27:23,017 INFO: model_trainer.py -> Epoch: 0 Completed. Average Loss: 4.763716849094012
+2025-05-05 20:30:26,510 INFO: model_trainer.py -> Epoch: 0 Validation Loss: 1.060084108337463
+2025-05-05 20:58:15,846 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/checkpoint_epoch_0_batch_2000. Starting training...
+2025-05-05 20:58:16,172 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-05 20:58:16,323 INFO: data_processor.py -> Created 10036 training examples.
+2025-05-05 20:58:16,323 INFO: data_processor.py -> Created 10036 dialog paris.
+2025-05-05 20:58:16,326 INFO: data_processor.py -> Training dataset: 8029 dialog pairs.
+2025-05-05 20:58:16,326 INFO: data_processor.py -> Validation dataset: 2007 dialog pairs.
+
+2025-05-05 20:58:18,498 INFO: model_trainer.py -> Using device: cpu
+
+2025-05-05 20:58:43,175 INFO: main.py -> Starting chatbot...
+2025-05-05 20:58:43,254 INFO: response_generator.py -> Model and Tokenizer load success.

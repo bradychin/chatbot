@@ -6,7 +6,7 @@ from torch.cuda.amp import autocast, GradScaler
 from src.log.logger import get_logger
 logger = get_logger(__name__)
 
-#--------- Import Scripts ---------#
+#--------- Import Classes ---------#
 from src.utils.data_processor import DataProcessor
 from src import config
 

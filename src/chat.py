@@ -2,7 +2,7 @@
 from src.log.logger import get_logger
 logger = get_logger(__name__)
 
-# --------- Response Generator ---------#
+# --------- Import Classes ---------#
 from src.utils.response_generator import ResponseGenerator
 
 # --------- Chatbot ---------#

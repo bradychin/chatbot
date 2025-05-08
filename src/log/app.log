@@ -126,3 +126,12 @@
 
 2025-05-05 20:58:43,175 INFO: main.py -> Starting chatbot...
 2025-05-05 20:58:43,254 INFO: response_generator.py -> Model and Tokenizer load success.
+2025-05-08 13:27:44,322 ERROR: main.py -> Model not found in /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../models/checkpoints/checkpoint_epoch_0_batch_2000. Starting training...
+2025-05-08 13:27:44,662 INFO: data_processor.py -> Loading data from /Users/bradychin/Library/Mobile Documents/com~apple~CloudDocs/Software Development/chatbot/src/../data/personachat.csv
+2025-05-08 13:27:44,824 INFO: data_processor.py -> Created 10036 training examples.
+2025-05-08 13:27:44,825 INFO: data_processor.py -> Created 10036 dialog paris.
+2025-05-08 13:27:44,825 INFO: data_processor.py -> Training dataset: 8029 dialog pairs.
+2025-05-08 13:27:44,825 INFO: data_processor.py -> Validation dataset: 2007 dialog pairs.
+
+2025-05-08 13:27:46,345 INFO: model_trainer.py -> Using device: cpu
+

@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, random_split
 from src.log.logger import get_logger
 logger = get_logger(__name__)
 
-#--------- Import Scripts ---------#
+#--------- Import Classes ---------#
 from src.utils.dialog_manager import DialogManager
 
 #--------- Functions ---------#

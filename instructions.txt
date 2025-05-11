@@ -1,0 +1,6 @@
+1.	Run main.py.
+    - If no trained model exists at the configured path, training will begin.
+    - If a trained model exists, the chatbot will launch immediately.
+
+2.	To change the model save/load location:
+    - Edit MODEL_PATH in src/config.py.

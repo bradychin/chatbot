@@ -37,7 +37,7 @@ def start_chatbot(model_path):
                 user_input = input('>>> ')
 
                 if user_input.lower() == "stop":
-                    print("Chatbot: Have a good day!")
+                    print("Chatbot: Have a good day!\n")
                     logger.info('Stopping chatbot...')
                     break
 

@@ -22,7 +22,7 @@ This project implements a simple, multi-turn generative chatbot using Natural La
 1. Clone this repository:
     ```bash
     git clone https://github.com/bradychin/chatbot.git
-    cd chatbot-project
+    cd chatbot
     ```
 
 2. Create a virtual environment and activate it:

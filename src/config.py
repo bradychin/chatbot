@@ -1,7 +1,12 @@
 import os
 
+########################################################################
+# Modify model path.
+MODEL_PATH = '../models/model'
+########################################################################
+
 #--------- main.py ---------#
-model_path = os.path.join(os.path.dirname(__file__), '../models/model')
+model_path = os.path.join(os.path.dirname(__file__), MODEL_PATH)
 
 #--------- model_trainer.py ---------#
 dataset_file_path = os.path.join(os.path.dirname(__file__), '../data/personachat_full.csv')

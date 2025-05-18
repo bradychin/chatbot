@@ -2,7 +2,7 @@ import os
 
 ########################################################################
 # Modify model path.
-MODEL_PATH = 'models/model'
+MODEL_PATH = 'models/best_model'
 ########################################################################
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -11,7 +11,7 @@ model_path = os.path.join(PROJECT_ROOT, MODEL_PATH)
 
 
 #--------- model_trainer.py ---------#
-dataset_file_path = os.path.join(os.path.dirname(__file__), '../data/personachat_full.csv')
+dataset_file_path = os.path.join(PROJECT_ROOT, 'data/personachat_full.csv')
 checkpoint_file_path = 'models/checkpoints/checkpoint_epoch_{epoch}_batch_{batch_index}'
 best_model_file_path = 'models/val loss/model_best_val_loss_{best_validation_loss:.4f}'
 final_model_file_path = 'models/model'

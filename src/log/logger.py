@@ -1,6 +1,7 @@
 import logging
+from src import config
 
-def get_logger(name, log_file='src/log/app.log'):
+def get_logger(name, log_file=config.log_path):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
     logger.propagate = False

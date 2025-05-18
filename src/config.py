@@ -2,11 +2,13 @@ import os
 
 ########################################################################
 # Modify model path.
-MODEL_PATH = '../models/model'
+MODEL_PATH = 'models/model'
 ########################################################################
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #--------- main.py ---------#
-model_path = os.path.join(os.path.dirname(__file__), MODEL_PATH)
+model_path = os.path.join(PROJECT_ROOT, MODEL_PATH)
+
 
 #--------- model_trainer.py ---------#
 dataset_file_path = os.path.join(os.path.dirname(__file__), '../data/personachat_full.csv')
@@ -23,3 +25,6 @@ weight_decay=0.01
 
 #--------- dialog_management.py ---------#
 max_length = 128
+
+#--------- logger.py ---------#
+log_path = os.path.join(PROJECT_ROOT, 'src/log/app.log')

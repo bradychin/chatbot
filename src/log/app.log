@@ -276,3 +276,12 @@
 
 2025-05-18 11:18:47,106 INFO: main.py -> Starting chatbot...
 2025-05-18 11:18:47,183 INFO: response_generator.py -> Model and Tokenizer load success.
+2026-01-13 12:26:50,837 ERROR: main.py -> Model not found in /Users/bradychin/Projects/chatbot/models/best_model. Starting training...
+2026-01-13 12:26:52,205 INFO: data_processor.py -> Loading data from /Users/bradychin/Projects/chatbot/data/personachat_full.csv
+2026-01-13 12:26:52,964 INFO: data_processor.py -> Created 83383 training examples.
+2026-01-13 12:26:52,964 INFO: data_processor.py -> Created 83383 dialog paris.
+2026-01-13 12:26:52,965 INFO: data_processor.py -> Training dataset: 66707 dialog pairs.
+2026-01-13 12:26:52,965 INFO: data_processor.py -> Validation dataset: 16676 dialog pairs.
+
+2026-01-13 12:27:04,490 INFO: model_trainer.py -> Using device: cpu
+
